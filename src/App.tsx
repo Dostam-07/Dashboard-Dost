@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAppStore, loadDashboardFromIDB } from './store';
 import { SavedDashboardsManager } from './components/SavedDashboardsManager';
 import { RecentActivityWidget } from './components/RecentActivityWidget';
-import { chaupalInsightsSeed, recentChaupalSessions } from './utils/seedData';
+import { recentChaupalSessions } from './utils/seedData';
 import { parsePartialPayload } from './utils/jsonRepair';
 import { filterComponentData, ActiveFilterState } from './utils/filterEngine';
 import { normalizeGeoData } from './utils/dataNormalization';
@@ -68,7 +67,9 @@ import {
   HelpCircle,
   MoreVertical,
   Star,
-  Wrench
+  Wrench,
+  BarChart2,
+  Lightbulb
 } from 'lucide-react';
 import {
   DndContext,
@@ -469,6 +470,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
   const [leftSidebarInput, setLeftSidebarInput] = useState('');
   const [shareLink, setShareLink] = useState<string | null>(null);
+
+  // Sidebar resize state
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const isResizingRef = useRef(false);
+  const resizeStartRef = useRef({ x: 0, width: 240 });
 
   // Add-on 1: Global Search States
   const [searchTerm, setSearchTerm] = useState('');
@@ -1139,16 +1145,14 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
             setCurrentPayload(payload);
             showNotification(`Restored active session: "${payload.title}"`);
     logActivity(String(`Restored active session: "${payload.title}"`));
-          } else {
-            setCurrentPayload(chaupalInsightsSeed);
           }
+          // No seed data — show clean homepage when no saved session
         }).catch((err) => {
           console.warn("Could not restore active dashboard session from IndexedDB", err);
-          setCurrentPayload(chaupalInsightsSeed);
+          // No seed data fallback — let homepage show
         });
-      } else {
-        setCurrentPayload(chaupalInsightsSeed);
       }
+      // No seed data — show clean homepage when no active dashboard id
     }
 
     return () => window.removeEventListener('dashboard-autosaved', onAutosave);
@@ -1203,6 +1207,30 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       setNotify((current) => current?.message === message ? null : current);
     }, 4500);
   };
+
+  // Sidebar resize handlers
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    resizeStartRef.current = { x: e.clientX, width: sidebarWidth };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const delta = ev.clientX - resizeStartRef.current.x;
+      const newW = Math.max(180, Math.min(420, resizeStartRef.current.width + delta));
+      setSidebarWidth(newW);
+    };
+    const onUp = () => {
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [sidebarWidth]);
 
   const handleLeftSidebarSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2125,11 +2153,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       )}
 
       {/* CORE WORKSPACE PORTION */}
-      <PanelGroup orientation="horizontal" className="flex-1 w-full h-full relative min-h-0 min-w-0">
+      <div className="flex-1 flex flex-row min-h-0 overflow-hidden w-full">
         
         {/* PANEL A: LEFT SIDEBAR - PREMIUM NAVIGATION */}
         {!isLeftSidebarCollapsed && (
-          <Panel id="left-sidebar" collapsible={true} defaultSize={18} maxSize={22} minSize={16} style={{ minWidth: 220 }} className="h-full border-r border-slate-200 dark:border-zinc-900 bg-white dark:bg-[#0d0f17] flex flex-col z-30">
+          <div style={{ width: sidebarWidth, minWidth: 180, maxWidth: 420 }} className="h-full border-r border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#0d0f17] flex flex-col shrink-0 overflow-hidden">
              <div className="p-3 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar min-w-0">
               {/* Logo container brand segment */}
               <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-zinc-800/60 min-w-0">
@@ -2291,27 +2319,31 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 </div>
               </div>
             </div>
-          </Panel>
+          </div>
         )}
 
+        {/* RESIZE HANDLE - drag to resize sidebar */}
         {!isLeftSidebarCollapsed && (
-          <>
-            <PanelResizeHandle className="w-1 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
-          </>
+          <div
+            onMouseDown={handleResizeMouseDown}
+            className="w-1 shrink-0 cursor-col-resize bg-slate-200/60 dark:bg-zinc-800/60 hover:bg-indigo-500 dark:hover:bg-indigo-500 transition-colors group"
+            title="Drag to resize sidebar"
+          />
         )}
 
+        {/* COLLAPSED EXPAND STRIP */}
         {isLeftSidebarCollapsed && (
           <button
             onClick={() => setIsLeftSidebarCollapsed(false)}
-            className="h-full w-5 bg-slate-50 dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-900 transition-colors flex items-center justify-center z-30 cursor-pointer shrink-0"
+            className="h-full w-5 bg-slate-50 dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors flex items-center justify-center cursor-pointer shrink-0 group"
             title="Expand sidebar"
           >
-            <ChevronRight className="h-3 w-3 text-slate-400" />
+            <ChevronRight className="h-3 w-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
           </button>
         )}
 
-        {/* PANEL B: MIDDLE DISPLAY CANVAS - CORE DASHBOARD VIEWPORT */}
-        <Panel id="main-content" className="flex flex-col min-w-0" defaultSize={isLeftSidebarCollapsed ? 100 : 82}>
+        {/* MAIN CANVAS - takes all remaining space */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <main className="p-4 sm:p-5 md:p-6 flex flex-col justify-start overflow-y-auto h-full custom-scrollbar bg-white dark:bg-[#0c0c11]/25 min-w-0">
           
           {isCanvasLoading ? (
@@ -3016,9 +3048,9 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           )}
 
         </main>
-        </Panel>
+        </div>
 
-      </PanelGroup>
+      </div>
 
       {/* FLOATING AI ASSISTANT */}
       {/* Floating Action Button - always visible */}
@@ -3333,20 +3365,73 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                         </div>
                       </div>
                     ) : (
-                      qaChats.map((chat) => (
+                      qaChats.map((chat) => {
+                        // Extract hero metric from assistant messages (first number + unit)
+                        let heroMetric: { value: string; label: string } | null = null;
+                        let whySection: string | null = null;
+                        let insightSection: string | null = null;
+                        let mainContent = chat.content;
+                        if (chat.role === 'assistant') {
+                          // Detect "Why important" / "Business insight" sections
+                          const whyMatch = chat.content.match(/(?:why(?:\s+it(?:'s|\s+is)?)?(?:\s+important)?|key\s+takeaway)[:\-–]?\s*([^\n]+(?:\n(?!business|insight|answer|result)[^\n]+)*)/i);
+                          const insightMatch = chat.content.match(/(?:business\s+(?:insight|context|impact)|recommendation|takeaway)[:\-–]?\s*([^\n]+(?:\n(?!why|answer|result)[^\n]+)*)/i);
+                          if (whyMatch) whySection = whyMatch[1].trim();
+                          if (insightMatch) insightSection = insightMatch[1].trim();
+                          // Extract first prominent number/percentage from text
+                          const numMatch = chat.content.match(/(?:^|\s|:)\*{0,2}(\d[\d,]*(?:\.\d+)?(?:\s*[%k km crore lakh million billion]+)?)\*{0,2}(?:\s+(?:sessions?|users?|records?|rows?|entries?|respondents?|districts?|total|unique|avg|average|median|count|cases?|villages?|blocks?|panchayats?|beneficiaries?))?/i);
+                          if (numMatch) {
+                            const rawVal = numMatch[1];
+                            // Find context words after the number for the label
+                            const afterNum = chat.content.substring(chat.content.indexOf(rawVal) + rawVal.length).match(/\s+([A-Za-z][a-z\s]{2,30})/);
+                            heroMetric = { value: rawVal, label: afterNum ? afterNum[1].trim() : 'Key Metric' };
+                          }
+                        }
+                        return (
                         <div
                           key={chat.id}
-                          className={`flex flex-col gap-1 max-w-[90%] ${
-                            chat.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'
+                          className={`flex flex-col gap-1 max-w-[95%] ${
+                            chat.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start w-full'
                           }`}
                         >
+                          {/* Hero metric card for assistant */}
+                          {chat.role === 'assistant' && heroMetric && (
+                            <div className="w-full mb-1 px-1">
+                              <div className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/40 dark:to-violet-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300 font-mono leading-none mb-1 truncate">{heroMetric.value}</div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-zinc-400 truncate">{heroMetric.label}</div>
+                                </div>
+                                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-xl shrink-0">
+                                  <Activity className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           <div className={`flex gap-2.5 w-full ${chat.role === 'user' ? 'flex-row-reverse' : ''}`}>
                             <div className={`p-3 rounded-2xl text-[11px] sm:text-xs leading-relaxed shadow-xs transition-all whitespace-pre-wrap w-full ${
                               chat.role === 'user'
                                 ? 'bg-indigo-600 text-white rounded-tr-none border border-indigo-700 font-medium font-sans'
-                                : 'bg-white border border-slate-300 text-slate-800 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 rounded-tl-none font-sans'
+                                : 'bg-white border border-slate-200 text-slate-800 dark:bg-zinc-900/80 dark:border-zinc-700 dark:text-zinc-100 rounded-tl-none font-sans'
                             }`}>
-                              <div>{chat.content}</div>
+                              <div>{mainContent}</div>
+                              {/* Why important section */}
+                              {chat.role === 'assistant' && whySection && (
+                                <div className="mt-3 pt-2.5 border-t border-indigo-100 dark:border-indigo-900/40">
+                                  <div className="text-[9px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1 flex items-center gap-1">
+                                    <Lightbulb className="h-2.5 w-2.5" /> Why it matters
+                                  </div>
+                                  <p className="text-[10px] text-slate-600 dark:text-zinc-300 leading-relaxed">{whySection}</p>
+                                </div>
+                              )}
+                              {/* Business insight section */}
+                              {chat.role === 'assistant' && insightSection && (
+                                <div className="mt-2 pt-2.5 border-t border-emerald-100 dark:border-emerald-900/40">
+                                  <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1 flex items-center gap-1">
+                                    <BarChart2 className="h-2.5 w-2.5" /> Business insight
+                                  </div>
+                                  <p className="text-[10px] text-slate-600 dark:text-zinc-300 leading-relaxed">{insightSection}</p>
+                                </div>
+                              )}
                               {chat.role === 'assistant' && chat.sourceWidgetIds && chat.sourceWidgetIds.length > 0 && (
                                 <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-1.5 items-center min-w-0">
                                   <span className="text-[9px] uppercase tracking-wider text-slate-400 dark:text-zinc-500 font-mono font-bold">Sources:</span>
@@ -3380,7 +3465,8 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                             </div>
                           </div>
                         </div>
-                      ))
+                      );
+                      })
                     )}
 
                     {isQaStreaming && (
