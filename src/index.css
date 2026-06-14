@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;750&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Custom Premium Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.4);
+}
+
+/* Custom dark utility classes if needed */
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  color: #0f172a;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark body {
+  background-color: #09090b;
+  color: #f4f4f5;
+}
+
+/* Custom select range adjustments */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: opacity(0.5);
+  transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  filter: opacity(1);
+}
