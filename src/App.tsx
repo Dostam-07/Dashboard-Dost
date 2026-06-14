@@ -316,6 +316,9 @@ export default function App() {
   const resetWorkspaceLayout = () => {
     setIsLeftSidebarCollapsed(false);
     setIsQAPanelCollapsed(false);
+    setCollapsedSectionIds([]);
+    setSections([]);
+    setActivePresetId(null);
     showNotification("Workspace layout reset to default.", "success");
     logActivity("Workspace layout reset.");
   };
@@ -324,16 +327,40 @@ export default function App() {
   const [activeSidebarMenu, setActiveSidebarMenu] = useState<'home' | 'dashboards' | 'datasets' | 'explorer' | 'reports' | 'settings'>('home');
   const [isStarred, setIsStarred] = useState(false);
   
-  // Skeleton loader component
-  const DashboardSkeleton = () => (
-    <div className="space-y-4 p-6 animate-pulse">
-      <div className="h-8 bg-slate-200 dark:bg-zinc-800 rounded w-1/3"></div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-200 dark:bg-zinc-800 rounded-lg"></div>)}
+  // Dashboard skeleton — grid-aware placeholders matching real chart layout
+  const DashboardSkeleton = () => {
+    const skeletonCards = [
+      { sm: 12, md: 4, h: 'h-32' },
+      { sm: 12, md: 4, h: 'h-32' },
+      { sm: 12, md: 4, h: 'h-32' },
+      { sm: 12, md: 6, h: 'h-64' },
+      { sm: 12, md: 6, h: 'h-64' },
+      { sm: 12, md: 12, h: 'h-72' },
+    ];
+    return (
+      <div className="space-y-6 min-w-0">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-200 dark:border-zinc-800 pb-6 mb-8 min-w-0">
+          <div className="space-y-2 min-w-0">
+            <div className="h-3 bg-slate-200 dark:bg-zinc-800 rounded w-40 animate-pulse"></div>
+            <div className="h-8 bg-slate-200 dark:bg-zinc-800 rounded w-64 animate-pulse"></div>
+            <div className="h-4 bg-slate-200 dark:bg-zinc-800 rounded w-48 animate-pulse"></div>
+          </div>
+          <div className="flex gap-2 min-w-0">
+            {[1,2,3,4,5].map(i => <div key={i} className="h-9 w-9 bg-slate-200 dark:bg-zinc-800 rounded-lg animate-pulse"></div>)}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch min-w-0">
+          {skeletonCards.map((card, i) => (
+            <div key={i} className={`col-span-${card.sm} md:col-span-${card.md} min-w-0`}>
+              <div className={`${card.h} bg-slate-100 dark:bg-zinc-900/40 rounded-3xl border border-slate-200 dark:border-zinc-800/60 animate-pulse relative overflow-hidden min-w-0`}>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-200/50 dark:via-zinc-700/20 to-transparent animate-[shimmer_2s_infinite] translate-x-[-100%]" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="h-64 bg-slate-200 dark:bg-zinc-800 rounded-lg"></div>
-    </div>
-  );
+    );
+  };
   
   // Right Sidebar Accordion Panel Collapsibles
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
@@ -1894,7 +1921,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-50 transition-colors duration-300 flex flex-col antialiased min-w-0">
       
       {/* PERSISTENT APP HEADER BAR */}
-      <header className="sticky top-0 z-40 w-full shrink-0 border-b border-slate-205 bg-white/95 dark:border-zinc-900/90 dark:bg-zinc-950/95 shadow-xs backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full shrink-0 border-b border-slate-200 bg-white/95 dark:border-zinc-900/90 dark:bg-zinc-950/95 shadow-xs backdrop-blur-md">
         <div className="flex h-16 items-center justify-between px-6 sm:px-8 min-w-0">
           <div className="flex items-center gap-4 min-w-0">
             {/* Logo container brand segment */}
@@ -2088,7 +2115,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         {/* PANEL A: LEFT SIDEBAR - PREMIUM NAVIGATION */}
         {!isLeftSidebarCollapsed && (
           <Panel id="left-sidebar" collapsible={true} defaultSize={15} maxSize={30} minSize={15} className="h-full border-r border-slate-200 dark:border-zinc-900 bg-white dark:bg-[#0d0f17] flex flex-col z-30">
-             <div className="p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar z-30 min-w-0">
+             <div className="p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar min-w-0">
               {/* Logo container brand segment */}
               <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-slate-100 dark:border-zinc-800/60 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
@@ -2635,7 +2662,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     }}
                     initial="hidden"
                     animate="show"
-                    className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative w-full"
+                    className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative w-full min-w-0 overflow-hidden"
                   >
                     {/* Visual Sections Group Cards */}
                     {sections.map((sec) => {
@@ -2644,7 +2671,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
                       return (
                         <SortableSectionItem key={sec.id} id={`section-${sec.id}`}>
-                          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 dark:bg-zinc-950/20 dark:border-zinc-800/80 space-y-4 shadow-sm animate-fade-in relative z-20">
+                          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 dark:bg-zinc-950/20 dark:border-zinc-800/80 space-y-4 shadow-sm animate-fade-in relative z-10 min-w-0">
                             <div className="flex items-center justify-between border-b border-slate-200/50 pb-2.5 dark:border-zinc-800/50 pl-6 min-w-0">
                               <div className="flex items-center gap-2 min-w-0">
                                 <button 
@@ -2665,7 +2692,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1.5 z-10 min-w-0">
+                              <div className="flex items-center gap-1.5 min-w-0">
                                 <button
                                   onClick={() => {
                                     setEditingSectionId(sec.id);
@@ -2687,8 +2714,8 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                               </div>
                             </div>
 
-                            <div 
-                              className={`grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative origin-top transition-all duration-550 ease-in-out overflow-hidden ${
+                            <div
+                              className={`grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative origin-top transition-all duration-550 ease-in-out overflow-hidden min-w-0 ${
                                 collapsedSectionIds.includes(sec.id) 
                                   ? 'max-h-0 opacity-0 pointer-events-none border-none mt-0 pt-0 py-0' 
                                   : 'max-h-[8000px] opacity-100 mt-4'
@@ -2964,7 +2991,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           <>
             <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
             <Panel id="right-sidebar" defaultSize={20} collapsible={true} maxSize={40} minSize={15} className="bg-slate-50/70 dark:bg-[#09090c]/90 h-full overflow-hidden border-l border-slate-200 dark:border-zinc-900 transition-all flex flex-col z-30">
-              <div className="p-4 lg:p-5 flex flex-col h-full overflow-hidden z-30 min-w-0">
+              <div className="p-4 lg:p-5 flex flex-col h-full overflow-hidden min-w-0">
                 <div className="flex justify-between items-center mb-4 min-w-0">
                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Panel</h3>
                     <div className="flex gap-2 min-w-0">
@@ -3409,7 +3436,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
       {isQAPanelCollapsed && (
         <button
           onClick={() => setIsQAPanelCollapsed(false)}
-          className="fixed bottom-6 right-6 z-40 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-4 shadow-xl transition-transform hover:scale-105 active:scale-95"
+          className="fixed bottom-6 right-6 z-50 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-4 shadow-xl transition-transform hover:scale-105 active:scale-95"
           title="Open AI Assistant"
         >
           <MessageSquare className="h-6 w-6" />
@@ -3420,7 +3447,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
       )}
 
       {/* MOBILE RESPONSIVE BOTTOM TAB SELECTOR BAR */}
-      <div className="lg:hidden shrink-0 h-16 border-t border-slate-200 bg-white/90 dark:border-zinc-900 dark:bg-zinc-950/90 backdrop-blur-md flex items-center justify-around px-2 sticky bottom-0 z-30 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] pb-safe-bottom min-w-0">
+      <div className="lg:hidden shrink-0 h-16 border-t border-slate-200 bg-white/90 dark:border-zinc-900 dark:bg-zinc-950/90 backdrop-blur-md flex items-center justify-around px-2 sticky bottom-0 z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] pb-safe-bottom min-w-0">
         <button
           onClick={() => setMobileTab('history')}
           className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${mobileTab === 'history' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/10 font-bold' : 'text-slate-400 hover:text-slate-600'}`}

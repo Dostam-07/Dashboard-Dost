@@ -58,7 +58,7 @@ function RootElement() {
     <>
       <App />
       {!isConnected && hasConnectedOnce && (
-        <div className="fixed bottom-4 left-4 z-[99] flex items-center gap-2.5 px-3.5 py-2.5 text-[11px] font-mono tracking-wide font-bold bg-rose-600/95 text-white rounded-xl shadow-2xl border border-rose-500/60 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4">
+        <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2.5 px-3.5 py-2.5 text-[11px] font-mono tracking-wide font-bold bg-rose-600/95 text-white rounded-xl shadow-2xl border border-rose-500/60 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4">
           <span className="w-2.5 h-2.5 rounded-full bg-rose-200 animate-pulse border border-rose-100" />
           <div className="flex flex-col">
             <span>Connection Dropped</span>

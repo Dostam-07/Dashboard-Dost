@@ -253,7 +253,7 @@ export const GeographyMap: React.FC<GeographyMapProps> = ({
 
         {/* Loading Spinner */}
         {loading && (
-          <div className="absolute inset-0 bg-slate-100/50 dark:bg-zinc-950/40 backdrop-blur-xs flex flex-col items-center justify-center gap-2.5 z-25">
+          <div className="absolute inset-0 bg-slate-100/50 dark:bg-zinc-950/40 backdrop-blur-xs flex flex-col items-center justify-center gap-2.5 z-20">
             <div className="w-8 h-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"></div>
             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-zinc-400">
               Syncing Regional Geometries...
@@ -263,7 +263,7 @@ export const GeographyMap: React.FC<GeographyMapProps> = ({
 
         {/* Failed CDN Topologies Recovery */}
         {fetchError && !loading && (
-          <div className="absolute inset-0 bg-red-50/70 dark:bg-red-950/30 flex flex-col items-center justify-center p-6 text-center gap-3 z-25">
+          <div className="absolute inset-0 bg-red-50/70 dark:bg-red-950/30 flex flex-col items-center justify-center p-6 text-center gap-3 z-20">
             <AlertCircle className="w-8 h-8 text-red-500" />
             <div className="max-w-md">
               <h4 className="text-xs font-bold text-red-800 dark:text-red-400">Map Rendering Failed</h4>

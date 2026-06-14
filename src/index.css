@@ -47,6 +47,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   transition: opacity 0.2s;
 }
 
+/* Skeleton shimmer animation */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 input[type="date"]::-webkit-calendar-picker-indicator:hover {
   filter: opacity(1);
 }

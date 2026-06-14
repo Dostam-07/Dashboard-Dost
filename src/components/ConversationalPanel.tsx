@@ -160,7 +160,7 @@ export const ConversationalPanel: React.FC<ConversationalPanelProps> = ({
     <>
       {/* Interactive Chip State */}
       <div 
-        className={`fixed z-[60] transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-[transform,opacity] flex flex-col items-end gap-3
+        className={`fixed z-50 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-[transform,opacity] flex flex-col items-end gap-3
           ${isCollapsed 
             ? 'bottom-[80px] sm:bottom-6 right-4 sm:right-6 opacity-100 translate-y-0 scale-100' 
             : 'bottom-[80px] sm:bottom-6 right-4 sm:right-6 opacity-0 translate-y-8 scale-90 pointer-events-none'
@@ -177,7 +177,7 @@ export const ConversationalPanel: React.FC<ConversationalPanelProps> = ({
 
       {/* Expanded Panel State */}
       <div 
-        className={`fixed bottom-0 left-0 right-0 sm:left-auto sm:right-6 z-[60] flex flex-col bg-white dark:bg-zinc-950/98 sm:border sm:border-b-0 border-slate-200 dark:border-zinc-800/80 rounded-t-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] overflow-hidden backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-[transform,opacity] origin-bottom
+        className={`fixed bottom-0 left-0 right-0 sm:left-auto sm:right-6 z-50 flex flex-col bg-white dark:bg-zinc-950/98 sm:border sm:border-b-0 border-slate-200 dark:border-zinc-800/80 rounded-t-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] overflow-hidden backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] will-change-[transform,opacity] origin-bottom
           ${isCollapsed 
             ? 'h-[85dvh] sm:h-[85vh] w-full sm:w-[440px] opacity-0 translate-y-[20%] scale-95 pointer-events-none'
             : 'h-[85dvh] sm:h-[85vh] w-full sm:w-[440px] opacity-100 translate-y-0 scale-100'

@@ -441,7 +441,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       case 'bar_chart':
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={dataWithTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(120, 120, 120, 0.1)" />
                 <XAxis 
@@ -490,7 +490,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       case 'line_chart':
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <LineChart data={dataWithTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(120, 120, 120, 0.1)" />
                 <XAxis 
@@ -546,7 +546,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       case 'area_chart':
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <AreaChart data={dataWithTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <defs>
                   {yAxisKeys.map((key, i) => (
@@ -612,7 +612,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
         const pieValueKey = yAxisKeys[0] || 'value';
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4 flex items-center justify-center`}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie
                   data={data}
@@ -641,7 +641,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
         const scatterY = yAxisKeys[0] || 'value';
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <ScatterChart margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(120, 120, 120, 0.1)" />
                 <XAxis 
@@ -895,7 +895,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
 
         {/* Dynamic Sparkline Plot integrated directly inside the bottom block */}
         <div className="absolute bottom-0 left-0 right-0 h-10 w-full pointer-events-none overflow-hidden">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <AreaChart data={sparkData} margin={{ top: 0, right: -5, left: -5, bottom: -5 }}>
               <defs>
                 <linearGradient id={`kpiSparkGradient_${title.replace(/[^a-zA-Z0-9]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
