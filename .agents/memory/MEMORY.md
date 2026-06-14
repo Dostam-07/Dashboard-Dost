@@ -1,3 +1,0 @@
-- [Workspace layout](workspace-layout.md) — sidebar uses CSS flexbox + custom drag-resize; PanelGroup was removed due to z-index bleed
-- [QA analyst UI](qa-analyst-ui.md) — hero metric card + Why/Business insight sections rendered above assistant message bubble
-- [Homepage clean start](homepage-clean.md) — no seed data auto-loaded; HomeLandingView shows on fresh load or missing session

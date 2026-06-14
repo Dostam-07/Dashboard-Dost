@@ -8,7 +8,7 @@ import { GoogleGenAI } from "@google/genai";
 dotenv.config();
 
 const isProd = process.env.NODE_ENV === "production";
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+const PORT = 3000;
 
 // Dynamic check of active provider model
 const getActiveProvider = () => {
@@ -816,7 +816,7 @@ Keep responses in beautiful, professional markdown. Speak as a Senior BI Archite
   // Vite Integration
   if (!isProd) {
     const vite = await createViteServer({
-      server: { middlewareMode: true, host: '0.0.0.0', allowedHosts: true },
+      server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);

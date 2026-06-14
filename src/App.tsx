@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { useAppStore, loadDashboardFromIDB } from './store';
 import { SavedDashboardsManager } from './components/SavedDashboardsManager';
 import { RecentActivityWidget } from './components/RecentActivityWidget';
-import { recentChaupalSessions } from './utils/seedData';
+import { chaupalInsightsSeed, recentChaupalSessions } from './utils/seedData';
 import { parsePartialPayload } from './utils/jsonRepair';
 import { filterComponentData, ActiveFilterState } from './utils/filterEngine';
 import { normalizeGeoData } from './utils/dataNormalization';
@@ -66,10 +67,7 @@ import {
   Bell,
   HelpCircle,
   MoreVertical,
-  Star,
-  Wrench,
-  BarChart2,
-  Lightbulb
+  Star
 } from 'lucide-react';
 import {
   DndContext,
@@ -303,33 +301,21 @@ export default function App() {
   
   // UI Layout States
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<string[]>([]);
-  // Use a fresh key to avoid stale localStorage values
-  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(() => {
-    const val = localStorage.getItem('dd_sidebar_v2');
-    if (val === null) return false;
-    return val === 'true';
-  });
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(() => localStorage.getItem('isLeftSidebarCollapsed') === 'true');
   const [isQAPanelCollapsed, setIsQAPanelCollapsed] = useState(() => localStorage.getItem('isQAPanelCollapsed') === 'true');
-  const [isCanvasLoading, setIsCanvasLoading] = useState(false);
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isCanvasLoading, setIsCanvasLoading] = useState(false); 
 
   useEffect(() => {
-    localStorage.setItem('dd_sidebar_v2', String(isLeftSidebarCollapsed));
+    localStorage.setItem('isLeftSidebarCollapsed', String(isLeftSidebarCollapsed));
   }, [isLeftSidebarCollapsed]);
 
   useEffect(() => {
     localStorage.setItem('isQAPanelCollapsed', String(isQAPanelCollapsed));
   }, [isQAPanelCollapsed]);
-
-  // Sidebar defaults to visible (expanded) on fresh load
   
   const resetWorkspaceLayout = () => {
     setIsLeftSidebarCollapsed(false);
-    setIsAssistantOpen(false);
     setIsQAPanelCollapsed(false);
-    setCollapsedSectionIds([]);
-    setSections([]);
-    setActivePresetId(null);
     showNotification("Workspace layout reset to default.", "success");
     logActivity("Workspace layout reset.");
   };
@@ -338,40 +324,16 @@ export default function App() {
   const [activeSidebarMenu, setActiveSidebarMenu] = useState<'home' | 'dashboards' | 'datasets' | 'explorer' | 'reports' | 'settings'>('home');
   const [isStarred, setIsStarred] = useState(false);
   
-  // Dashboard skeleton — grid-aware placeholders matching real chart layout
-  const DashboardSkeleton = () => {
-    const skeletonCards = [
-      { sm: 12, md: 4, h: 'h-32' },
-      { sm: 12, md: 4, h: 'h-32' },
-      { sm: 12, md: 4, h: 'h-32' },
-      { sm: 12, md: 6, h: 'h-64' },
-      { sm: 12, md: 6, h: 'h-64' },
-      { sm: 12, md: 12, h: 'h-72' },
-    ];
-    return (
-      <div className="space-y-6 min-w-0">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-200 dark:border-zinc-800 pb-6 mb-8 min-w-0">
-          <div className="space-y-2 min-w-0">
-            <div className="h-3 bg-slate-200 dark:bg-zinc-800 rounded w-40 animate-pulse"></div>
-            <div className="h-8 bg-slate-200 dark:bg-zinc-800 rounded w-64 animate-pulse"></div>
-            <div className="h-4 bg-slate-200 dark:bg-zinc-800 rounded w-48 animate-pulse"></div>
-          </div>
-          <div className="flex gap-2 min-w-0">
-            {[1,2,3,4,5].map(i => <div key={i} className="h-9 w-9 bg-slate-200 dark:bg-zinc-800 rounded-lg animate-pulse"></div>)}
-          </div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch min-w-0">
-          {skeletonCards.map((card, i) => (
-            <div key={i} className={`col-span-${card.sm} md:col-span-${card.md} min-w-0`}>
-              <div className={`${card.h} bg-slate-100 dark:bg-zinc-900/40 rounded-3xl border border-slate-200 dark:border-zinc-800/60 animate-pulse relative overflow-hidden min-w-0`}>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-200/50 dark:via-zinc-700/20 to-transparent animate-[shimmer_2s_infinite] translate-x-[-100%]" />
-              </div>
-            </div>
-          ))}
-        </div>
+  // Skeleton loader component
+  const DashboardSkeleton = () => (
+    <div className="space-y-4 p-6 animate-pulse">
+      <div className="h-8 bg-slate-200 dark:bg-zinc-800 rounded w-1/3"></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-200 dark:bg-zinc-800 rounded-lg"></div>)}
       </div>
-    );
-  };
+      <div className="h-64 bg-slate-200 dark:bg-zinc-800 rounded-lg"></div>
+    </div>
+  );
   
   // Right Sidebar Accordion Panel Collapsibles
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
@@ -470,11 +432,6 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
   const [leftSidebarInput, setLeftSidebarInput] = useState('');
   const [shareLink, setShareLink] = useState<string | null>(null);
-
-  // Sidebar resize state
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-  const isResizingRef = useRef(false);
-  const resizeStartRef = useRef({ x: 0, width: 240 });
 
   // Add-on 1: Global Search States
   const [searchTerm, setSearchTerm] = useState('');
@@ -1145,14 +1102,16 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
             setCurrentPayload(payload);
             showNotification(`Restored active session: "${payload.title}"`);
     logActivity(String(`Restored active session: "${payload.title}"`));
+          } else {
+            setCurrentPayload(chaupalInsightsSeed);
           }
-          // No seed data — show clean homepage when no saved session
         }).catch((err) => {
           console.warn("Could not restore active dashboard session from IndexedDB", err);
-          // No seed data fallback — let homepage show
+          setCurrentPayload(chaupalInsightsSeed);
         });
+      } else {
+        setCurrentPayload(chaupalInsightsSeed);
       }
-      // No seed data — show clean homepage when no active dashboard id
     }
 
     return () => window.removeEventListener('dashboard-autosaved', onAutosave);
@@ -1167,17 +1126,12 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         return;
       }
 
-      if (e.key === 'Escape') {
-        if (isAssistantOpen) {
-          setIsAssistantOpen(false);
-        }
-      }
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (canUndo) {
           undo();
           showNotification("Undid layout change.");
-          logActivity(String("Undid layout change."));
+    logActivity(String("Undid layout change."));
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
@@ -1185,7 +1139,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         if (canRedo) {
           redo();
           showNotification("Redid layout change.");
-          logActivity(String("Redid layout change."));
+    logActivity(String("Redid layout change."));
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -1193,13 +1147,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         if (canRedo) {
           redo();
           showNotification("Redid layout change.");
-          logActivity(String("Redid layout change."));
+    logActivity(String("Redid layout change."));
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, canUndo, canRedo, isAssistantOpen]);
+  }, [undo, redo, canUndo, canRedo]);
 
   const showNotification = (message: string, type: 'success' | 'refuse' = 'success') => {
     setNotify({ message, type });
@@ -1207,30 +1161,6 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       setNotify((current) => current?.message === message ? null : current);
     }, 4500);
   };
-
-  // Sidebar resize handlers
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizingRef.current = true;
-    resizeStartRef.current = { x: e.clientX, width: sidebarWidth };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    const onMove = (ev: MouseEvent) => {
-      if (!isResizingRef.current) return;
-      const delta = ev.clientX - resizeStartRef.current.x;
-      const newW = Math.max(180, Math.min(420, resizeStartRef.current.width + delta));
-      setSidebarWidth(newW);
-    };
-    const onUp = () => {
-      isResizingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [sidebarWidth]);
 
   const handleLeftSidebarSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1964,7 +1894,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-50 transition-colors duration-300 flex flex-col antialiased min-w-0">
       
       {/* PERSISTENT APP HEADER BAR */}
-      <header className="sticky top-0 z-40 w-full shrink-0 border-b border-slate-200 bg-white/95 dark:border-zinc-900/90 dark:bg-zinc-950/95 shadow-xs backdrop-blur-md">
+      <header className="sticky top-0 z-40 w-full shrink-0 border-b border-slate-205 bg-white/95 dark:border-zinc-900/90 dark:bg-zinc-950/95 shadow-xs backdrop-blur-md">
         <div className="flex h-16 items-center justify-between px-6 sm:px-8 min-w-0">
           <div className="flex items-center gap-4 min-w-0">
             {/* Logo container brand segment */}
@@ -2099,11 +2029,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
               <ListRestart className="h-4.5 w-4.5" />
             </button>
             <button
-                onClick={() => setIsAssistantOpen(true)}
+                onClick={() => setIsQAPanelCollapsed(prev => !prev)}
                 className="p-2 rounded-lg border border-slate-200 dark:border-zinc-800 text-slate-400 hover:text-slate-900 dark:text-zinc-550 dark:hover:text-zinc-100 transition-all h-9 w-9 flex items-center justify-center cursor-pointer min-w-0"
-                title="Open AI Assistant"
+                title="Toggle Q&A Panel"
             >
-              <Bot className="h-4.5 w-4.5" />
+              <MessageSquare className="h-4.5 w-4.5" />
             </button>
 
             {/* Theme switcher toggle */}
@@ -2153,50 +2083,54 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       )}
 
       {/* CORE WORKSPACE PORTION */}
-      <div className="flex-1 flex flex-row min-h-0 overflow-hidden w-full">
+      <PanelGroup orientation="horizontal" className="flex-1 w-full h-full relative min-h-0 min-w-0">
         
         {/* PANEL A: LEFT SIDEBAR - PREMIUM NAVIGATION */}
         {!isLeftSidebarCollapsed && (
-          <div style={{ width: sidebarWidth, minWidth: 180, maxWidth: 420 }} className="h-full border-r border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#0d0f17] flex flex-col shrink-0 overflow-hidden">
-             <div className="p-3 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar min-w-0">
+          <Panel id="left-sidebar" collapsible={true} defaultSize={15} maxSize={30} minSize={15} className="h-full border-r border-slate-200 dark:border-zinc-900 bg-white dark:bg-[#0d0f17] flex flex-col z-30">
+             <div className="p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar z-30 min-w-0">
               {/* Logo container brand segment */}
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-zinc-800/60 min-w-0">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 shadow-md min-w-0">
-                    <div className="relative flex items-center justify-center h-4 w-4 rounded-full border-2 border-white/90 min-w-0">
-                      <div className="h-1 w-1 rounded-full bg-white animate-pulse" />
+              <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-slate-100 dark:border-zinc-800/60 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-indigo-600 shadow-md min-w-0">
+                    <div className="relative flex items-center justify-center h-5 w-5 rounded-full border border-white/90 min-w-0">
+                      <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                     </div>
                   </div>
-                  <div className="min-w-0">
-                    <span className="font-extrabold text-[13px] tracking-tight text-slate-900 dark:text-white font-sans truncate block">
-                      Dashboard-Dost
-                    </span>
+                  <div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-extrabold text-[13.5px] tracking-tight text-slate-900 dark:text-white font-sans">
+                        Dashboard-Dost
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-white bg-violet-600">v2.0</span>
+                    </div>
                     <span className="text-[9px] text-slate-400 dark:text-zinc-550 font-medium tracking-wide block">
-                      AI Analytics
+                      AI-Powered Analytics Platform
                     </span>
                   </div>
                 </div>
-                <button onClick={() => setIsLeftSidebarCollapsed(true)} className="lg:hidden p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg text-slate-400">
+                <button onClick={() => setIsLeftSidebarCollapsed(true)} className="lg:hidden p-1.5 hover:bg-slate-105 dark:hover:bg-zinc-800 rounded-lg text-slate-400">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               {/* New Dashboard primary action CTA */}
-              <div className="mb-4">
+              <div className="mb-6">
                 <button
                   onClick={handleNewDashboard}
-                  className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all font-sans cursor-pointer shadow-sm inline-flex items-center justify-center group min-w-0"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-700 bg-gradient-to-r from-violet-600 to-indigo-650 hover:from-violet-700 hover:to-indigo-700 transition-all font-sans cursor-pointer shadow-md inline-flex items-center justify-center group min-w-0"
+                  title="Start a fresh blank dashboard session"
                 >
                   <Plus className="h-3.5 w-3.5 transition-transform group-hover:rotate-90" />
-                  <span>New Dashboard</span>
+                  <span>+ New Dashboard</span>
                 </button>
               </div>
 
               {/* SaaS Navigation groups */}
-              <div className="space-y-5 flex-1 min-w-0">
+              <div className="space-y-6 flex-1 min-w-0">
                 {[
                   {
-                    title: "Workspace",
+                    title: "WORKSPACE",
                     items: [
                       { id: 'home', label: 'Home', icon: Home },
                       { id: 'dashboards', label: 'Dashboards', icon: Grid2X2, badge: savedDashboards.length > 0 ? String(savedDashboards.length) : undefined },
@@ -2204,36 +2138,26 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       { id: 'explorer', label: 'Data Explorer', icon: Compass },
                       { id: 'templates', label: 'Templates', icon: LayoutTemplate, action: () => setIsTemplateGalleryOpen(true) },
                       { id: 'reports', label: 'Reports', icon: SlidersHorizontal },
+                      { id: 'alerts', label: 'Alerts', icon: Bell },
                     ]
                   },
                   {
-                    title: "AI Tools",
+                    title: "AI ANALYTICS",
                     items: [
-                      { id: 'assistant', label: 'AI Assistant', icon: Bot, action: () => setIsAssistantOpen(true) },
-                      { id: 'insights', label: 'Insights', icon: Sparkles, action: fetchAIInsights },
-                      { id: 'anomaly', label: 'Anomaly Detection', icon: AlertOctagon },
-                      { id: 'narratives', label: 'Smart Narratives', icon: MessageSquare },
+                      { id: 'assistant', label: 'AI Assistant', icon: Bot, badge: 'New', action: () => { setMobileTab('chat'); if (isQAPanelCollapsed) setIsQAPanelCollapsed(false); } },
+                      { id: 'insights', label: 'Smart Insights', icon: Sparkles, action: fetchAIInsights },
                     ]
                   },
                   {
-                    title: "Management",
+                    title: "MANAGE",
                     items: [
                       { id: 'users', label: 'Users & Teams', icon: Users },
                       { id: 'settings', label: 'Settings', icon: Settings },
-                      { id: 'audit', label: 'Audit Logs', icon: History },
-                    ]
-                  },
-                  {
-                    title: "System",
-                    items: [
-                      { id: 'help', label: 'Help Center', icon: HelpCircle },
-                      { id: 'feedback', label: 'Feedback', icon: Star },
-                      { id: 'trash', label: 'Trash', icon: Trash2 },
                     ]
                   }
                 ].map((group) => (
-                  <div key={group.title} className="space-y-0.5">
-                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-wider font-mono block px-2 mb-1">
+                  <div key={group.title} className="space-y-1.5">
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-widest font-mono block px-2.5">
                       {group.title}
                     </span>
                     <div className="space-y-0.5">
@@ -2247,18 +2171,18 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                               setActiveSidebarMenu(item.id as any);
                               if (item.action) item.action();
                             }}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
+                            className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
                               isActive
-                                ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 font-bold'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/50'
+                                ? 'bg-indigo-50 text-indigo-705 dark:bg-zinc-900 dark:text-indigo-400 font-bold'
+                                : 'text-slate-655 hover:text-slate-900 hover:bg-slate-50 dark:text-zinc-400 dark:hover:text-zinc-250 dark:hover:bg-zinc-900/40'
                             }`}
                           >
                             <span className="flex items-center gap-2.5 min-w-0">
-                              <Icon className={`h-3.5 w-3.5 shrink-0 ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
-                              <span className="truncate">{item.label}</span>
+                              <Icon className={`h-4 w-4 shrink-0 transition-transform ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                              <span>{item.label}</span>
                             </span>
                             {item.badge && (
-                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400 border border-indigo-200/30 font-sans tracking-wider">
+                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-indigo-100 text-indigo-805 dark:bg-indigo-950 dark:text-indigo-400 border border-indigo-200/30 font-sans tracking-wider">
                                 {item.badge}
                               </span>
                             )}
@@ -2269,12 +2193,12 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   </div>
                 ))}
 
-                {/* Quick Saved Dashboard List */}
-                <div className="pt-3 border-t border-slate-100 dark:border-zinc-800/40">
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-wider font-mono block px-2 mb-1.5">
-                    Recent Dashboards
+                {/* Quick Saved Dashboard Ingestion on left side */}
+                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/40">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-widest font-mono block px-2.5 mb-2">
+                    ACTIVE WORKSPACE LIST
                   </span>
-                  <div className="max-h-40 overflow-y-auto custom-scrollbar">
+                  <div className="max-h-56 overflow-y-auto custom-scrollbar">
                     <SavedDashboardsManager onLoadDashboard={handleLoadDashboardMeta} />
                   </div>
                 </div>
@@ -2282,68 +2206,53 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 <RecentActivityWidget />
               </div>
 
-              {/* Quick Ingestion form */}
-              <div className="mt-4 mb-2 p-3 rounded-lg border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5 space-y-2">
+              {/* Quick Universal Ingestion form inside left side */}
+              <div className="mt-6 mb-4 p-3.5 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5 space-y-2.5">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <Sparkles className="h-3 w-3 text-indigo-500 animate-pulse shrink-0" />
-                  <span className="text-[9px] font-bold text-slate-500 dark:text-zinc-400 font-sans uppercase tracking-wider">
-                    Ingest URL
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-500 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 font-sans uppercase tracking-wider">
+                    Ingest & Build Studio
                   </span>
                 </div>
+                
                 <form onSubmit={handleLeftSidebarSubmit} className="space-y-1.5">
                   <input
                     type="text"
-                    placeholder="Paste URL..."
+                    placeholder="Paste Metabase/Tableau URL..."
                     value={leftSidebarInput}
                     onChange={(e) => setLeftSidebarInput(e.target.value)}
-                    className="w-full px-2 py-1 text-[10px] bg-white border border-slate-200 outline-none rounded-md focus:ring-1 focus:ring-indigo-500/20 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650"
+                    className="w-full px-2.5 py-1.5 text-[11px] bg-white border border-slate-250 outline-none rounded-lg focus:ring-2 focus:ring-indigo-600/10 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650"
                   />
                   <button
                     type="submit"
                     disabled={!leftSidebarInput.trim() || isStreaming}
-                    className="w-full py-1 bg-slate-800 hover:bg-slate-700 text-white dark:bg-zinc-700 dark:hover:bg-zinc-600 text-[9px] font-bold uppercase tracking-wider font-mono rounded-md transition-all cursor-pointer disabled:opacity-40 min-w-0"
+                    className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-705 text-[10px] font-bold uppercase tracking-wider font-mono rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 min-w-0"
                   >
-                    Compile
+                    <span>Compile & Render</span>
                   </button>
                 </form>
               </div>
 
-              {/* Storage meter */}
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 dark:bg-zinc-900/30 dark:border-zinc-800/60 space-y-1.5">
+              {/* STORAGE METRIC CAPSULE */}
+              <div className="mt-2 p-3.5 rounded-xl bg-slate-50 border border-slate-205 dark:bg-zinc-900/30 dark:border-zinc-850 space-y-2">
                 <div className="flex items-center justify-between min-w-0">
-                  <span className="text-[8px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono">Storage</span>
-                  <span className="text-[8px] font-bold text-slate-500 dark:text-zinc-400 font-mono">6.5 / 10 GB</span>
+                  <span className="text-[9px] font-bold text-slate-405 dark:text-zinc-550 uppercase tracking-widest font-mono">Workspace Storage</span>
+                  <span className="text-[9px] font-bold text-slate-705 dark:text-zinc-305 font-mono">6.5 GB / 10 GB</span>
                 </div>
-                <div className="h-1 w-full bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                  <div className="h-full w-[65%] bg-indigo-500 dark:bg-indigo-400 rounded-full" />
+                <div className="h-1.5 w-full bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-full w-[65%] bg-indigo-600 dark:bg-indigo-500 rounded-full animate-pulse" />
                 </div>
               </div>
             </div>
-          </div>
+          </Panel>
         )}
-
-        {/* RESIZE HANDLE - drag to resize sidebar */}
+        
         {!isLeftSidebarCollapsed && (
-          <div
-            onMouseDown={handleResizeMouseDown}
-            className="w-1 shrink-0 cursor-col-resize bg-slate-200/60 dark:bg-zinc-800/60 hover:bg-indigo-500 dark:hover:bg-indigo-500 transition-colors group"
-            title="Drag to resize sidebar"
-          />
+          <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
         )}
 
-        {/* COLLAPSED EXPAND STRIP */}
-        {isLeftSidebarCollapsed && (
-          <button
-            onClick={() => setIsLeftSidebarCollapsed(false)}
-            className="h-full w-5 bg-slate-50 dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors flex items-center justify-center cursor-pointer shrink-0 group"
-            title="Expand sidebar"
-          >
-            <ChevronRight className="h-3 w-3 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-          </button>
-        )}
-
-        {/* MAIN CANVAS - takes all remaining space */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* PANEL B: MIDDLE DISPLAY CANVAS - CORE DASHBOARD VIEWPORT */}
+        <Panel id="main-content" className="flex flex-col min-w-0" defaultSize={isLeftSidebarCollapsed && isQAPanelCollapsed ? 100 : 55}>
           <main className="p-4 sm:p-5 md:p-6 flex flex-col justify-start overflow-y-auto h-full custom-scrollbar bg-white dark:bg-[#0c0c11]/25 min-w-0">
           
           {isCanvasLoading ? (
@@ -2726,7 +2635,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     }}
                     initial="hidden"
                     animate="show"
-                    className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative w-full min-w-0 overflow-hidden"
+                    className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative w-full"
                   >
                     {/* Visual Sections Group Cards */}
                     {sections.map((sec) => {
@@ -2735,7 +2644,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
                       return (
                         <SortableSectionItem key={sec.id} id={`section-${sec.id}`}>
-                          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 dark:bg-zinc-950/20 dark:border-zinc-800/80 space-y-4 shadow-sm animate-fade-in relative z-10 min-w-0">
+                          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 dark:bg-zinc-950/20 dark:border-zinc-800/80 space-y-4 shadow-sm animate-fade-in relative z-20">
                             <div className="flex items-center justify-between border-b border-slate-200/50 pb-2.5 dark:border-zinc-800/50 pl-6 min-w-0">
                               <div className="flex items-center gap-2 min-w-0">
                                 <button 
@@ -2756,7 +2665,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="flex items-center gap-1.5 z-10 min-w-0">
                                 <button
                                   onClick={() => {
                                     setEditingSectionId(sec.id);
@@ -2778,8 +2687,8 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                               </div>
                             </div>
 
-                            <div
-                              className={`grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative origin-top transition-all duration-550 ease-in-out overflow-hidden min-w-0 ${
+                            <div 
+                              className={`grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative origin-top transition-all duration-550 ease-in-out overflow-hidden ${
                                 collapsedSectionIds.includes(sec.id) 
                                   ? 'max-h-0 opacity-0 pointer-events-none border-none mt-0 pt-0 py-0' 
                                   : 'max-h-[8000px] opacity-100 mt-4'
@@ -3048,532 +2957,470 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           )}
 
         </main>
-        </div>
+        </Panel>
 
-      </div>
-
-      {/* FLOATING AI ASSISTANT */}
-      {/* Floating Action Button - always visible */}
-      <button
-        onClick={() => setIsAssistantOpen(true)}
-        className="fixed bottom-6 right-6 z-50 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-3.5 shadow-xl shadow-indigo-600/20 transition-transform hover:scale-110 active:scale-95 ring-2 ring-white/50 dark:ring-zinc-900/50"
-        title="Open AI Assistant"
-      >
-        <Bot className="h-6 w-6" />
-        {(isStreaming || isQaStreaming) && (
-          <span className="absolute top-1 right-1 h-3 w-3 rounded-full bg-emerald-400 animate-pulse border-2 border-indigo-600" />
-        )}
-      </button>
-
-      {/* Assistant Modal - Slide-over from right */}
-      {isAssistantOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setIsAssistantOpen(false)}>
-          <div className="absolute inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-sm" />
-          <div
-            className="relative h-full w-full max-w-lg sm:max-w-xl bg-white dark:bg-zinc-950 border-l border-slate-200 dark:border-zinc-800 shadow-2xl flex flex-col animate-slide-in-right"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-zinc-800 shrink-0 min-w-0">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-                  <Bot className="h-4 w-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 font-sans">AI Assistant</h3>
-                  <p className="text-[10px] text-slate-400 dark:text-zinc-500">Layout Builder & Data Analyst</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 min-w-0">
-                <button
-                  onClick={() => setIsAssistantOpen(false)}
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg text-slate-400 transition-colors"
-                  title="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Tab Switcher */}
-            <div className="flex bg-slate-100 dark:bg-zinc-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-zinc-800 shadow-inner m-4 mb-2 w-auto shrink-0 min-w-0">
-              <button
-                type="button"
-                onClick={() => setRightActiveChatTab('builder')}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                  rightActiveChatTab === 'builder'
-                    ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
-                    : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
-                }`}
-              >
-                <span className="flex items-center justify-center gap-1.5">
-                  <Wrench className="h-3 w-3" /> Layout Builder
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRightActiveChatTab('qa')}
-                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                  rightActiveChatTab === 'qa'
-                    ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
-                    : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
-                }`}
-              >
-                <span className="flex items-center justify-center gap-1.5">
-                  <MessageSquare className="h-3 w-3" /> Data Analyst
-                </span>
-              </button>
-            </div>
-
-            {/* Active Tab View */}
-            <div className="flex-1 flex flex-col min-h-0 min-w-0 px-4 pb-4 overflow-hidden">
-              {rightActiveChatTab === 'builder' ? (
-                /* TAB 1: DESIGN & LAYOUT BUILDER CHAT */
-                <div className="flex-1 flex flex-col min-h-0 min-w-0">
-                  {/* Header Info */}
-                  <div className="mb-3 shrink-0 flex items-center justify-between min-w-0">
-                    <div>
-                      <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-widest font-mono">Dost-Builder Chat</h4>
-                      <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-sans">Type instructions to compile or edit layout state</p>
+        {/* PANEL C: RIGHT SIDEBAR - ASSISTANTS & CONVERSATIONS */}
+        {!isQAPanelCollapsed && (
+          <>
+            <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
+            <Panel id="right-sidebar" defaultSize={20} collapsible={true} maxSize={40} minSize={15} className="bg-slate-50/70 dark:bg-[#09090c]/90 h-full overflow-hidden border-l border-slate-200 dark:border-zinc-900 transition-all flex flex-col z-30">
+              <div className="p-4 lg:p-5 flex flex-col h-full overflow-hidden z-30 min-w-0">
+                <div className="flex justify-between items-center mb-4 min-w-0">
+                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Panel</h3>
+                    <div className="flex gap-2 min-w-0">
+                      <button onClick={() => setIsQAPanelCollapsed(true)} className="p-1 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded">
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
-                    {currentPayload && (
-                      <div className="flex items-center gap-1.5 bg-violet-50 dark:bg-violet-950/20 text-violet-750 dark:text-violet-400 border border-violet-100/40 dark:border-violet-900/40 px-2 py-0.5 rounded text-[9px] font-bold font-mono min-w-0">
-                        <span>{builderMode === 'edit' ? 'EDIT MODE' : 'NEW MODE'}</span>
-                      </div>
-                    )}
-                  </div>
+                </div>
+                
+                {/* Segmented Tab Headers */}
+                <div className="flex bg-slate-100 dark:bg-zinc-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-zinc-800 shadow-inner mb-4 w-full shrink-0 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setRightActiveChatTab('builder')}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      rightActiveChatTab === 'builder'
+                        ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
+                        : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    🛠️ Layout Builder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightActiveChatTab('qa')}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      rightActiveChatTab === 'qa'
+                        ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
+                        : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    💡 Data Analyst Q&A
+                  </button>
+                </div>
 
-                  {/* Undo / Redo / Clear Tools Row */}
+                {/* Active Tab View */}
+          <div className="flex-1 flex flex-col min-h-0 min-w-0">
+            {rightActiveChatTab === 'builder' ? (
+              /* TAB 1: DESIGN & LAYOUT BUILDER CHAT */
+              <div className="flex-1 flex flex-col min-h-0 min-w-0">
+                {/* Header Info */}
+                <div className="mb-3 shrink-0 flex items-center justify-between min-w-0">
+                  <div>
+                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-widest font-mono">Dost-Builder Chat</h4>
+                    <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-sans">Type instructions to compile or edit layout state</p>
+                  </div>
                   {currentPayload && (
-                    <div className="mb-3 shrink-0 grid grid-cols-4 gap-1 text-[9px] font-mono">
-                      <button
-                        type="button"
-                        onClick={undo}
-                        disabled={!canUndo}
-                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer min-w-0"
-                        title="Undo last layout state changes"
-                      >
-                        <Undo className="h-3 w-3" />
-                        <span>Undo</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={redo}
-                        disabled={!canRedo}
-                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer min-w-0"
-                        title="Redo previously undone state transition"
-                      >
-                        <Redo className="h-3 w-3" />
-                        <span>Redo</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          try {
-                            navigator.clipboard.writeText(JSON.stringify(currentPayload, null, 2));
-                            setNotify({ type: 'success', message: 'Copied layout JSON configuration!' });
-                          } catch (_) {}
-                        }}
-                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-indigo-600 transition-all cursor-pointer min-w-0"
-                        title="Copy JSON layout spec"
-                      >
-                        <FileJson className="h-3 w-3" />
-                        <span>Copy JSON</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleClearWorkspace}
-                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-rose-500 transition-all cursor-pointer min-w-0"
-                        title="Reset canvas state"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        <span>Clear</span>
-                      </button>
+                    <div className="flex items-center gap-1.5 bg-violet-50 dark:bg-violet-950/20 text-violet-750 dark:text-violet-400 border border-violet-100/40 dark:border-violet-900/40 px-2 py-0.5 rounded text-[9px] font-bold font-mono min-w-0">
+                      <span>{builderMode === 'edit' ? 'EDIT MODE' : 'NEW MODE'}</span>
                     </div>
                   )}
+                </div>
 
-                  {/* Builder Chat Logs Area */}
-                  <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-100/50 dark:bg-zinc-950/40 rounded-2xl border border-slate-200/40 dark:border-zinc-900/60 custom-scrollbar mb-3 min-h-0 min-w-0">
-                    {chats.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto min-w-0">
-                        <div className="p-3 bg-white dark:bg-zinc-900 border border-slate-250 dark:border-zinc-800 rounded-full shadow-xs">
-                          <Bot className="h-5 w-5 text-indigo-500 animate-pulse" />
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 font-sans block mb-1">Awaiting Layout Directives</span>
-                          <p className="text-[10px] text-slate-450 dark:text-zinc-500 leading-relaxed font-sans max-w-[210px] mx-auto">
-                            State your layout design, add components, or choose a template to stream beautiful charts!
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      chats.map((chat) => (
-                        <div
-                          key={chat.id}
-                          className={`flex gap-2.5 max-w-[90%] ${
-                            chat.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
-                          }`}
-                        >
-                          <div className={`p-3 rounded-2xl text-[11px] sm:text-xs leading-relaxed shadow-xs transition-all whitespace-pre-wrap ${
-                            chat.role === 'user'
-                              ? 'bg-indigo-650 text-white rounded-tr-none border border-indigo-700 font-medium font-sans'
-                              : 'bg-white border border-slate-200/80 text-slate-700 dark:bg-zinc-900 dark:border-zinc-800/85 dark:text-zinc-250 rounded-tl-none font-sans'
-                          }`}>
-                            {chat.content}
-                          </div>
-                        </div>
-                      ))
-                    )}
-
-                    {/* Streaming Progression Animation */}
-                    {isStreaming && (
-                      <div className="p-3 rounded-xl bg-indigo-50/50 dark:bg-zinc-900/60 border border-indigo-100/50 dark:border-indigo-900/45 space-y-2 font-mono text-[10px] animate-pulse">
-                        <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider text-[9px] shrink-0 min-w-0">
-                          <Activity className="h-3.5 w-3.5 animate-spin" />
-                          <span>Compiling Layout Specs...</span>
-                        </div>
-                        {streamProgressText && (
-                          <div className="text-[9px] text-slate-400 dark:text-zinc-400 italic truncate">
-                            {streamProgressText}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                {/* Undo / Redo / Clear Tools Row */}
+                {currentPayload && (
+                  <div className="mb-3 shrink-0 grid grid-cols-4 gap-1 text-[9px] font-mono">
+                    <button
+                      type="button"
+                      onClick={undo}
+                      disabled={!canUndo}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer min-w-0"
+                      title="Undo last layout state changes"
+                    >
+                      <Undo className="h-3 w-3" />
+                      <span>Undo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={redo}
+                      disabled={!canRedo}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer min-w-0"
+                      title="Redo previously undone state transition"
+                    >
+                      <Redo className="h-3 w-3" />
+                      <span>Redo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          navigator.clipboard.writeText(JSON.stringify(currentPayload, null, 2));
+                          setNotify({ type: 'success', message: 'Copied layout JSON configuration!' });
+                        } catch (_) {}
+                      }}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-indigo-600 transition-all cursor-pointer min-w-0"
+                      title="Copy JSON layout spec"
+                    >
+                      <FileJson className="h-3 w-3" />
+                      <span>Copy JSON</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearWorkspace}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-rose-500 transition-all cursor-pointer min-w-0"
+                      title="Reset canvas state"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>Clear</span>
+                    </button>
                   </div>
+                )}
 
-                  {/* Builder Input Box */}
-                  <div className="shrink-0 bg-white dark:bg-zinc-950 p-3 border border-slate-300 dark:border-zinc-700 rounded-xl space-y-2">
-                    {currentPayload && (
-                      <div className="flex bg-slate-200 dark:bg-zinc-800 rounded-lg p-0.5 border border-slate-300/40 dark:border-zinc-700 items-center justify-around min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setBuilderMode('edit')}
-                          className={`flex-1 py-1 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
-                            builderMode === 'edit'
-                              ? 'bg-white dark:bg-zinc-800 text-indigo-650 dark:text-indigo-400 shadow-xs border border-slate-250/20'
-                              : 'text-slate-450'
-                          }`}
-                          title="Edit active layout structure"
-                        >
-                          EDIT ACTIVE
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBuilderMode('new')}
-                          className={`flex-1 py-1 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
-                            builderMode === 'new'
-                              ? 'bg-white dark:bg-zinc-800 text-indigo-650 dark:text-indigo-400 shadow-xs border border-slate-250/20'
-                              : 'text-slate-450'
-                          }`}
-                          title="Build layout from scratch"
-                        >
-                          NEW CANVAS
-                        </button>
+                {/* Builder Chat Logs Area */}
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-100/50 dark:bg-zinc-950/40 rounded-2xl border border-slate-200/40 dark:border-zinc-900/60 custom-scrollbar mb-3 min-h-0 min-w-0">
+                  {chats.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto min-w-0">
+                      <div className="p-3 bg-white dark:bg-zinc-900 border border-slate-250 dark:border-zinc-800 rounded-full shadow-xs">
+                        <Bot className="h-5 w-5 text-indigo-500 animate-pulse" />
                       </div>
-                    )}
-                    <form onSubmit={handleBuilderSubmit} className="relative flex items-center min-w-0">
-                      <input
-                        type="text"
-                        value={builderInput}
-                        onChange={(e) => setBuilderInput(e.target.value)}
-                        disabled={isStreaming}
-                        placeholder={
-                          isStreaming
-                            ? "Assembling dashboard specifications..."
-                            : currentPayload && builderMode === 'edit'
-                            ? "E.g., 'Change column to 3', 'Add conversion map'"
-                            : "Type instructions to generate a custom dashboard..."
-                        }
-                        className="w-full pl-3 pr-11 py-2.5 text-xs rounded-lg border border-slate-200 text-slate-800 bg-white dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all shadow-xs shrink-0"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!builderInput.trim() || isStreaming}
-                        className={`absolute right-1 text-white p-1.5 rounded-md transition-all cursor-pointer ${
-                          builderInput.trim() && !isStreaming
-                            ? 'bg-indigo-600 hover:bg-indigo-700 shadow-xs transform active:scale-95'
-                            : 'bg-slate-100 dark:bg-zinc-800 text-slate-450 dark:text-zinc-650'
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 font-sans block mb-1">Awaiting Layout Directives</span>
+                        <p className="text-[10px] text-slate-450 dark:text-zinc-500 leading-relaxed font-sans max-w-[210px] mx-auto">
+                          State your layout design, add components, or choose a template on the left to stream beautiful charts!
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    chats.map((chat) => (
+                      <div
+                        key={chat.id}
+                        className={`flex gap-2.5 max-w-[90%] ${
+                          chat.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
                         }`}
                       >
-                        <CornerDownLeft className="h-3.5 w-3.5" />
+                        <div className={`p-3 rounded-2xl text-[11px] sm:text-xs leading-relaxed shadow-xs transition-all whitespace-pre-wrap ${
+                          chat.role === 'user'
+                            ? 'bg-indigo-650 text-white rounded-tr-none border border-indigo-700 font-medium font-sans'
+                            : 'bg-white border border-slate-200/80 text-slate-700 dark:bg-zinc-900 dark:border-zinc-800/85 dark:text-zinc-250 rounded-tl-none font-sans'
+                        }`}>
+                          {chat.content}
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {/* Streaming Progression Animation */}
+                  {isStreaming && (
+                    <div className="p-3 rounded-xl bg-indigo-50/50 dark:bg-zinc-900/60 border border-indigo-100/50 dark:border-indigo-900/45 space-y-2 font-mono text-[10px] animate-pulse">
+                      <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider text-[9px] shrink-0 min-w-0">
+                        <Activity className="h-3.5 w-3.5 animate-spin" />
+                        <span>Compiling Layout Specs...</span>
+                      </div>
+                      
+                      {streamProgressText && (
+                        <div className="text-[9px] text-slate-400 dark:text-zinc-400 italic truncate">
+                          {streamProgressText}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Builder Input Box */}
+                <div className="shrink-0 bg-white dark:bg-zinc-950 p-3 border border-slate-300 dark:border-zinc-700 rounded-xl space-y-2">
+                  {currentPayload && (
+                    <div className="flex bg-slate-200 dark:bg-zinc-800 rounded-lg p-0.5 border border-slate-300/40 dark:border-zinc-700 items-center justify-around min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => setBuilderMode('edit')}
+                        className={`flex-1 py-1 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
+                          builderMode === 'edit'
+                            ? 'bg-white dark:bg-zinc-800 text-indigo-650 dark:text-indigo-400 shadow-xs border border-slate-250/20'
+                            : 'text-slate-450'
+                        }`}
+                        title="Edit active layout structure"
+                      >
+                        EDIT ACTIVE
                       </button>
-                    </form>
+                      <button
+                        type="button"
+                        onClick={() => setBuilderMode('new')}
+                        className={`flex-1 py-1 text-[9px] font-bold rounded-md transition-all cursor-pointer ${
+                          builderMode === 'new'
+                            ? 'bg-white dark:bg-zinc-800 text-indigo-650 dark:text-indigo-400 shadow-xs border border-slate-250/20'
+                            : 'text-slate-450'
+                        }`}
+                        title="Build layout from scratch"
+                      >
+                        NEW CANVAS
+                      </button>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleBuilderSubmit} className="relative flex items-center min-w-0">
+                    <input
+                      type="text"
+                      value={builderInput}
+                      onChange={(e) => setBuilderInput(e.target.value)}
+                      disabled={isStreaming}
+                      placeholder={
+                        isStreaming
+                          ? "Assembling dashboard specifications..."
+                          : currentPayload && builderMode === 'edit'
+                          ? "E.g., 'Change column to 3', 'Add conversion map'"
+                          : "Type instructions to generate a custom dashboard..."
+                      }
+                      className="w-full pl-3 pr-11 py-2.5 text-xs rounded-lg border border-slate-200 text-slate-800 bg-white dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition-all shadow-xs shrink-0"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!builderInput.trim() || isStreaming}
+                      className={`absolute right-1 text-white p-1.5 rounded-md transition-all cursor-pointer ${
+                        builderInput.trim() && !isStreaming
+                          ? 'bg-indigo-600 hover:bg-indigo-700 shadow-xs transform active:scale-95'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-450 dark:text-zinc-650'
+                      }`}
+                    >
+                      <CornerDownLeft className="h-3.5 w-3.5" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ) : (
+              /* TAB 2: DATA ANALYST Q&A CHAT */
+              <div className="flex-1 flex flex-col min-h-0 font-sans min-w-0">
+                {/* Header Info */}
+                <div className="mb-3 shrink-0 flex items-center justify-between min-w-0">
+                  <div>
+                    <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-widest font-mono">Data Analyst Q&A</h4>
+                    <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-sans">Ask questions about trends and metrics context</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-405 border border-emerald-100/40 dark:border-emerald-900/35 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0 min-w-0">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>DASHBOARD LIVE</span>
                   </div>
                 </div>
-              ) : (
-                /* TAB 2: DATA ANALYST Q&A CHAT */
-                <div className="flex-1 flex flex-col min-h-0 font-sans min-w-0">
-                  {/* Header Info */}
-                  <div className="mb-3 shrink-0 flex items-center justify-between min-w-0">
-                    <div>
-                      <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-widest font-mono">Data Analyst Q&A</h4>
-                      <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-sans">Ask questions about trends and metrics context</p>
+
+                {/* Current Context Summary */}
+                {currentPayload && (
+                  <div className="mb-3 p-3 bg-violet-50/50 dark:bg-violet-950/15 border border-violet-100/40 dark:border-violet-900/45 rounded-xl space-y-1.5 text-[10px] shrink-0 transition-all">
+                    <div className="flex items-center gap-1.5 font-bold text-violet-700 dark:text-violet-300 font-sans min-w-0">
+                      <Compass className="h-3.5 w-3.5 text-violet-600" />
+                      <span>Current Grounding Context</span>
                     </div>
-                    <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-405 border border-emerald-100/40 dark:border-emerald-900/35 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0 min-w-0">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>DASHBOARD LIVE</span>
+                    <div className="space-y-1 text-slate-700 dark:text-zinc-300 ml-5 font-sans">
+                      <div>
+                        <span className="font-extrabold text-slate-900 dark:text-white">Dashboard:</span> {currentPayload.title}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 leading-relaxed min-w-0">
+                        <span className="font-extrabold text-slate-900 dark:text-white">Filters:</span>
+                        {(() => {
+                          const activeFilterLabels: string[] = [];
+                          (currentPayload.filters || []).forEach(f => {
+                            const selected = filterState.selectedCategories[f.id] || [];
+                            if (selected.length > 0) {
+                              activeFilterLabels.push(`${f.label}: ${selected.join(', ')}`);
+                            }
+                          });
+                          if (activeFilterLabels.length === 0) {
+                            return <span className="text-slate-500 dark:text-zinc-500 italic font-medium font-sans">None (All values loaded)</span>;
+                          }
+                          return activeFilterLabels.map((lbl, i) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900 text-violet-900 dark:text-violet-100 rounded-md font-bold font-mono text-[9px] border border-violet-200 dark:border-violet-800 shadow-2xs">
+                              {lbl}
+                            </span>
+                          ));
+                        })()}
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  {/* Current Context Summary */}
-                  {currentPayload && (
-                    <div className="mb-3 p-3 bg-violet-50/50 dark:bg-violet-950/15 border border-violet-100/40 dark:border-violet-900/45 rounded-xl space-y-1.5 text-[10px] shrink-0 transition-all">
-                      <div className="flex items-center gap-1.5 font-bold text-violet-700 dark:text-violet-300 font-sans min-w-0">
-                        <Compass className="h-3.5 w-3.5 text-violet-600" />
-                        <span>Current Grounding Context</span>
+                {/* Q&A Chat Logs Area */}
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-white dark:bg-zinc-950 rounded-2xl border border-slate-300 dark:border-zinc-800 custom-scrollbar mb-3 min-h-0 min-w-0">
+                  {qaChats.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto font-sans min-w-0">
+                      <div className="p-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-full shadow-xs">
+                        <MessageSquare className="h-5 w-5 text-emerald-500 animate-pulse" />
                       </div>
-                      <div className="space-y-1 text-slate-700 dark:text-zinc-300 ml-5 font-sans">
-                        <div>
-                          <span className="font-extrabold text-slate-900 dark:text-white">Dashboard:</span> {currentPayload.title}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 leading-relaxed min-w-0">
-                          <span className="font-extrabold text-slate-900 dark:text-white">Filters:</span>
-                          {(() => {
-                            const activeFilterLabels: string[] = [];
-                            (currentPayload.filters || []).forEach(f => {
-                              const selected = filterState.selectedCategories[f.id] || [];
-                              if (selected.length > 0) {
-                                activeFilterLabels.push(`${f.label}: ${selected.join(', ')}`);
-                              }
-                            });
-                            if (activeFilterLabels.length === 0) {
-                              return <span className="text-slate-500 dark:text-zinc-500 italic font-medium font-sans">None (All values loaded)</span>;
-                            }
-                            return activeFilterLabels.map((lbl, i) => (
-                              <span key={i} className="px-1.5 py-0.5 bg-violet-100 dark:bg-violet-900 text-violet-900 dark:text-violet-100 rounded-md font-bold font-mono text-[9px] border border-violet-200 dark:border-violet-800 shadow-2xs">
-                                {lbl}
-                              </span>
-                            ));
-                          })()}
-                        </div>
+                      <div>
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 font-sans block mb-1">Awaiting active dataset</span>
+                        <p className="text-[10px] text-slate-450 dark:text-zinc-500 leading-relaxed font-sans max-w-[210px] mx-auto">
+                          Load a dashboard template or compile custom datasets to query metrics, aggregates, ratios and find trends!
+                        </p>
                       </div>
                     </div>
-                  )}
+                  ) : (
+                    qaChats.map((chat) => (
+                      <div
+                        key={chat.id}
+                        className={`flex flex-col gap-1 max-w-[90%] ${
+                          chat.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start'
+                        }`}
+                      >
+                        <div className={`flex gap-2.5 w-full ${chat.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                          <div className={`p-3 rounded-2xl text-[11px] sm:text-xs leading-relaxed shadow-xs transition-all whitespace-pre-wrap w-full ${
+                            chat.role === 'user'
+                              ? 'bg-indigo-600 text-white rounded-tr-none border border-indigo-700 font-medium font-sans'
+                              : 'bg-white border border-slate-300 text-slate-800 dark:bg-zinc-900 dark:border-zinc-700 dark:text-zinc-100 rounded-tl-none font-sans'
+                          }`}>
+                            <div>{chat.content}</div>
 
-                  {/* Q&A Chat Logs Area */}
-                  <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-white dark:bg-zinc-950 rounded-2xl border border-slate-300 dark:border-zinc-800 custom-scrollbar mb-3 min-h-0 min-w-0">
-                    {qaChats.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto font-sans min-w-0">
-                        <div className="p-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-full shadow-xs">
-                          <MessageSquare className="h-5 w-5 text-emerald-500 animate-pulse" />
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 font-sans block mb-1">Awaiting active dataset</span>
-                          <p className="text-[10px] text-slate-450 dark:text-zinc-500 leading-relaxed font-sans max-w-[210px] mx-auto">
-                            Load a dashboard template or compile custom datasets to query metrics, aggregates, ratios and find trends!
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      qaChats.map((chat) => {
-                        // Extract hero metric from assistant messages (first number + unit)
-                        let heroMetric: { value: string; label: string } | null = null;
-                        let whySection: string | null = null;
-                        let insightSection: string | null = null;
-                        let mainContent = chat.content;
-                        if (chat.role === 'assistant') {
-                          // Detect "Why important" / "Business insight" sections
-                          const whyMatch = chat.content.match(/(?:why(?:\s+it(?:'s|\s+is)?)?(?:\s+important)?|key\s+takeaway)[:\-–]?\s*([^\n]+(?:\n(?!business|insight|answer|result)[^\n]+)*)/i);
-                          const insightMatch = chat.content.match(/(?:business\s+(?:insight|context|impact)|recommendation|takeaway)[:\-–]?\s*([^\n]+(?:\n(?!why|answer|result)[^\n]+)*)/i);
-                          if (whyMatch) whySection = whyMatch[1].trim();
-                          if (insightMatch) insightSection = insightMatch[1].trim();
-                          // Extract first prominent number/percentage from text
-                          const numMatch = chat.content.match(/(?:^|\s|:)\*{0,2}(\d[\d,]*(?:\.\d+)?(?:\s*[%k km crore lakh million billion]+)?)\*{0,2}(?:\s+(?:sessions?|users?|records?|rows?|entries?|respondents?|districts?|total|unique|avg|average|median|count|cases?|villages?|blocks?|panchayats?|beneficiaries?))?/i);
-                          if (numMatch) {
-                            const rawVal = numMatch[1];
-                            // Find context words after the number for the label
-                            const afterNum = chat.content.substring(chat.content.indexOf(rawVal) + rawVal.length).match(/\s+([A-Za-z][a-z\s]{2,30})/);
-                            heroMetric = { value: rawVal, label: afterNum ? afterNum[1].trim() : 'Key Metric' };
-                          }
-                        }
-                        return (
-                        <div
-                          key={chat.id}
-                          className={`flex flex-col gap-1 max-w-[95%] ${
-                            chat.role === 'user' ? 'ml-auto items-end' : 'mr-auto items-start w-full'
-                          }`}
-                        >
-                          {/* Hero metric card for assistant */}
-                          {chat.role === 'assistant' && heroMetric && (
-                            <div className="w-full mb-1 px-1">
-                              <div className="bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/40 dark:to-violet-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-2xl font-black text-indigo-700 dark:text-indigo-300 font-mono leading-none mb-1 truncate">{heroMetric.value}</div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-zinc-400 truncate">{heroMetric.label}</div>
-                                </div>
-                                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/40 rounded-xl shrink-0">
-                                  <Activity className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                                </div>
+                            {chat.role === 'assistant' && chat.sourceWidgetIds && chat.sourceWidgetIds.length > 0 && (
+                              <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-1.5 items-center min-w-0">
+                                <span className="text-[9px] uppercase tracking-wider text-slate-400 dark:text-zinc-500 font-mono font-bold">Sources:</span>
+                                {chat.sourceWidgetIds.map(compId => {
+                                  const widget = currentPayload?.components?.find(c => c.id === compId);
+                                  const displayName = widget?.title || compId;
+                                  return (
+                                    <button
+                                      key={compId}
+                                      type="button"
+                                      onClick={() => {
+                                        const element = document.getElementById(`widget-card-${compId}`);
+                                        if (element) {
+                                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                          element.classList.add('ring-4', 'ring-indigo-650', 'dark:ring-indigo-400', 'ring-offset-2', 'ring-opacity-90');
+                                          setTimeout(() => {
+                                            element.classList.remove('ring-4', 'ring-indigo-650', 'dark:ring-indigo-400', 'ring-offset-2', 'ring-opacity-90');
+                                          }, 2500);
+                                        }
+                                      }}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40 text-violet-750 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60 rounded-full text-[9px] font-extrabold transition-all hover:scale-105 active:scale-95 cursor-pointer max-w-full truncate min-w-0"
+                                      title={`Click to focus: ${displayName}`}
+                                    >
+                                      <Compass className="h-2.5 w-2.5 shrink-0 text-violet-500 animate-pulse" />
+                                      <span className="truncate">{displayName}</span>
+                                    </button>
+                                  );
+                                })}
                               </div>
-                            </div>
-                          )}
-                          <div className={`flex gap-2.5 w-full ${chat.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                            <div className={`p-3 rounded-2xl text-[11px] sm:text-xs leading-relaxed shadow-xs transition-all whitespace-pre-wrap w-full ${
-                              chat.role === 'user'
-                                ? 'bg-indigo-600 text-white rounded-tr-none border border-indigo-700 font-medium font-sans'
-                                : 'bg-white border border-slate-200 text-slate-800 dark:bg-zinc-900/80 dark:border-zinc-700 dark:text-zinc-100 rounded-tl-none font-sans'
-                            }`}>
-                              <div>{mainContent}</div>
-                              {/* Why important section */}
-                              {chat.role === 'assistant' && whySection && (
-                                <div className="mt-3 pt-2.5 border-t border-indigo-100 dark:border-indigo-900/40">
-                                  <div className="text-[9px] font-bold uppercase tracking-widest text-indigo-500 dark:text-indigo-400 mb-1 flex items-center gap-1">
-                                    <Lightbulb className="h-2.5 w-2.5" /> Why it matters
-                                  </div>
-                                  <p className="text-[10px] text-slate-600 dark:text-zinc-300 leading-relaxed">{whySection}</p>
-                                </div>
-                              )}
-                              {/* Business insight section */}
-                              {chat.role === 'assistant' && insightSection && (
-                                <div className="mt-2 pt-2.5 border-t border-emerald-100 dark:border-emerald-900/40">
-                                  <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1 flex items-center gap-1">
-                                    <BarChart2 className="h-2.5 w-2.5" /> Business insight
-                                  </div>
-                                  <p className="text-[10px] text-slate-600 dark:text-zinc-300 leading-relaxed">{insightSection}</p>
-                                </div>
-                              )}
-                              {chat.role === 'assistant' && chat.sourceWidgetIds && chat.sourceWidgetIds.length > 0 && (
-                                <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-1.5 items-center min-w-0">
-                                  <span className="text-[9px] uppercase tracking-wider text-slate-400 dark:text-zinc-500 font-mono font-bold">Sources:</span>
-                                  {chat.sourceWidgetIds.map(compId => {
-                                    const widget = currentPayload?.components?.find(c => c.id === compId);
-                                    const displayName = widget?.title || compId;
-                                    return (
-                                      <button
-                                        key={compId}
-                                        type="button"
-                                        onClick={() => {
-                                          const element = document.getElementById(`widget-card-${compId}`);
-                                          if (element) {
-                                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                            element.classList.add('ring-4', 'ring-indigo-650', 'dark:ring-indigo-400', 'ring-offset-2', 'ring-opacity-90');
-                                            setTimeout(() => {
-                                              element.classList.remove('ring-4', 'ring-indigo-650', 'dark:ring-indigo-400', 'ring-offset-2', 'ring-opacity-90');
-                                            }, 2500);
-                                          }
-                                        }}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40 text-violet-750 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60 rounded-full text-[9px] font-extrabold transition-all hover:scale-105 active:scale-95 cursor-pointer max-w-full truncate min-w-0"
-                                        title={`Click to focus: ${displayName}`}
-                                      >
-                                        <Compass className="h-2.5 w-2.5 shrink-0 text-violet-500 animate-pulse" />
-                                        <span className="truncate">{displayName}</span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </div>
-                      );
-                      })
-                    )}
-
-                    {isQaStreaming && (
-                      <div className="flex items-center gap-2 mr-auto text-indigo-650 dark:text-indigo-400 font-mono text-[9px] animate-pulse min-w-0">
-                        <Activity className="h-3 w-3 animate-spin text-indigo-550" />
-                        <span>Data Assistant is analyzing dashboard metrics...</span>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Q&A Suggestion Chips */}
-                  {currentPayload && (
-                    <div className="mb-3 shrink-0">
-                      <div className="flex flex-wrap gap-1 min-w-0">
-                        {[
-                          { label: "📊 Summary", q: "Can you summarize the main metrics and key insights from the active dashboard?" },
-                          { label: "📈 Spikes/Spurs", q: "Are there any major spikes or interesting trends inside the dataset metrics?" },
-                          { label: "🏆 Leaders", q: "Which segment or category has the highest values or leading performance?" }
-                        ].map((item, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setQaInput(item.q)}
-                            className="px-2 py-1 bg-white hover:bg-slate-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 rounded-lg text-[9px] font-semibold text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-zinc-800 transition-all cursor-pointer"
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    ))
                   )}
 
-                  {/* Q&A Input Box */}
-                  {suggestions.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 px-2 pb-2 min-w-0">
-                      {suggestions.map((suggestion, index) => (
+                  {isQaStreaming && (
+                    <div className="flex items-center gap-2 mr-auto text-indigo-650 dark:text-indigo-400 font-mono text-[9px] animate-pulse min-w-0">
+                      <Activity className="h-3 w-3 animate-spin text-indigo-550" />
+                      <span>Data Assistant is analyzing dashboard metrics...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Q&A Suggestion Chips focused specifically on analytical reviews */}
+                {currentPayload && (
+                  <div className="mb-3 shrink-0">
+                    <div className="flex flex-wrap gap-1 min-w-0">
+                      {[
+                        { label: "📊 Summary", q: "Can you summarize the main metrics and key insights from the active dashboard?" },
+                        { label: "📈 Spikes/Spurs", q: "Are there any major spikes or interesting trends inside the dataset metrics?" },
+                        { label: "🏆 Leaders", q: "Which segment or category has the highest values or leading performance?" }
+                      ].map((item, idx) => (
                         <button
-                          key={index}
+                          key={idx}
                           type="button"
-                          onClick={() => setQaInput(suggestion)}
-                          className="px-2.5 py-1 text-[10px] bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/40 text-violet-750 dark:text-violet-300 border border-violet-200 dark:border-violet-800 rounded-full transition-all hover:scale-105 active:scale-95"
+                          onClick={() => {
+                            setQaInput(item.q);
+                          }}
+                          className="px-2 py-1 bg-white hover:bg-slate-50 dark:bg-zinc-900 dark:hover:bg-zinc-850 rounded-lg text-[9px] font-semibold text-slate-600 dark:text-zinc-300 border border-slate-200/80 dark:border-zinc-800 transition-all cursor-pointer"
                         >
-                          {suggestion}
+                          {item.label}
                         </button>
                       ))}
                     </div>
-                  )}
-                  <div className="shrink-0 bg-white/50 dark:bg-zinc-900/20 p-2 border border-slate-205 dark:border-zinc-905 rounded-xl space-y-2">
-                    <form onSubmit={handleQaSubmit} className="relative flex items-center min-w-0">
-                      <input
-                        type="text"
-                        value={qaInput}
-                        onChange={(e) => setQaInput(e.target.value)}
-                        disabled={isQaStreaming || !currentPayload}
-                        placeholder={
-                          !currentPayload
-                            ? "Compile a dashboard first to ask Q&A..."
-                            : isQaStreaming
-                            ? "Formulating data replies..."
-                            : "Ask metric questions (e.g. 'what is the average category performance?')"
-                        }
-                        className="w-full pl-3 pr-11 py-2.5 text-xs rounded-lg border border-slate-205 text-slate-800 bg-white dark:border-zinc-850 dark:bg-zinc-900 dark:text-zinc-100 focus:ring-1 focus:ring-indigo-550 focus:border-indigo-550 focus:outline-none transition-all shadow-xs disabled:opacity-50 shrink-0"
-                      />
-                      <button
-                        type="submit"
-                        disabled={!qaInput.trim() || isQaStreaming || !currentPayload}
-                        className={`absolute right-1 text-white p-1.5 rounded-md transition-all cursor-pointer ${
-                          qaInput.trim() && !isQaStreaming && currentPayload
-                            ? 'bg-indigo-600 hover:bg-indigo-700 shadow-xs transform active:scale-95'
-                            : 'bg-slate-100 dark:bg-zinc-800 text-slate-450 dark:text-zinc-650'
-                        }`}
-                      >
-                        <CornerDownLeft className="h-3.5 w-3.5" />
-                      </button>
-                    </form>
-                    {qaChats.length > 1 && (
-                      <div className="flex items-center justify-end min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (currentPayload) {
-                              setQaChats([
-                                {
-                                  id: 'welcome',
-                                  role: 'assistant',
-                                  content: `Hi there! I am your context-aware **Assistant**. I have ingested the "${currentPayload.title}" dashboard.\n                    \nAsk me any questions about the metrics, trends, or records displayed above!`,
-                                  timestamp: new Date().toISOString()
-                                }
-                              ]);
-                            }
-                          }}
-                          className="text-[9px] font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer uppercase tracking-wider font-mono bg-transparent outline-none border-none"
-                        >
-                          Reset Thread
-                        </button>
-                      </div>
-                    )}
                   </div>
+                )}
+
+                {/* Q&A Input Box */}
+                {suggestions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 px-2 pb-2 min-w-0">
+                    {suggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => {
+                          setQaInput(suggestion);
+                        }}
+                        className="px-2.5 py-1 text-[10px] bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/40 text-violet-750 dark:text-violet-300 border border-violet-200 dark:border-violet-800 rounded-full transition-all hover:scale-105 active:scale-95"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="shrink-0 bg-white/50 dark:bg-zinc-900/20 p-2 border border-slate-205 dark:border-zinc-905 rounded-xl space-y-2">
+                  <form onSubmit={handleQaSubmit} className="relative flex items-center min-w-0">
+                    <input
+                      type="text"
+                      value={qaInput}
+                      onChange={(e) => setQaInput(e.target.value)}
+                      disabled={isQaStreaming || !currentPayload}
+                      placeholder={
+                        !currentPayload
+                          ? "Compile a dashboard first to ask Q&A..."
+                          : isQaStreaming
+                          ? "Formulating data replies..."
+                          : "Ask metric questions (e.g. 'what is the average category performance?')"
+                      }
+                      className="w-full pl-3 pr-11 py-2.5 text-xs rounded-lg border border-slate-205 text-slate-800 bg-white dark:border-zinc-850 dark:bg-zinc-900 dark:text-zinc-100 focus:ring-1 focus:ring-indigo-550 focus:border-indigo-550 focus:outline-none transition-all shadow-xs disabled:opacity-50 shrink-0"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!qaInput.trim() || isQaStreaming || !currentPayload}
+                      className={`absolute right-1 text-white p-1.5 rounded-md transition-all cursor-pointer ${
+                        qaInput.trim() && !isQaStreaming && currentPayload
+                          ? 'bg-indigo-600 hover:bg-indigo-700 shadow-xs transform active:scale-95'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-450 dark:text-zinc-650'
+                      }`}
+                    >
+                      <CornerDownLeft className="h-3.5 w-3.5" />
+                    </button>
+                  </form>
+                  {qaChats.length > 1 && (
+                    <div className="flex items-center justify-end min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (currentPayload) {
+                            setQaChats([
+                              {
+                                id: 'welcome',
+                                role: 'assistant',
+                                content: `Hi there! I am your context-aware **Assistant**. I have ingested the "${currentPayload.title}" dashboard.
+                    
+Ask me any questions about the metrics, trends, or records displayed above!`,
+                                timestamp: new Date().toISOString()
+                              }
+                            ]);
+                          }
+                        }}
+                        className="text-[9px] font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer uppercase tracking-wider font-mono bg-transparent outline-none border-none"
+                      >
+                        Reset Thread
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        </div>
+              </div>
+            </Panel>
+          </>
+        )}
+
+      </PanelGroup>
+
+      {/* FLOATING CHAT BUTTON WHEN COLLAPSED */}
+      {isQAPanelCollapsed && (
+        <button
+          onClick={() => setIsQAPanelCollapsed(false)}
+          className="fixed bottom-6 right-6 z-40 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-4 shadow-xl transition-transform hover:scale-105 active:scale-95"
+          title="Open AI Assistant"
+        >
+          <MessageSquare className="h-6 w-6" />
+          {isQaStreaming && (
+            <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse border-2 border-indigo-600" />
+          )}
+        </button>
       )}
 
       {/* MOBILE RESPONSIVE BOTTOM TAB SELECTOR BAR */}
-      <div className="lg:hidden shrink-0 h-16 border-t border-slate-200 bg-white/90 dark:border-zinc-900 dark:bg-zinc-950/90 backdrop-blur-md flex items-center justify-around px-2 sticky bottom-0 z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] pb-safe-bottom min-w-0">
+      <div className="lg:hidden shrink-0 h-16 border-t border-slate-200 bg-white/90 dark:border-zinc-900 dark:bg-zinc-950/90 backdrop-blur-md flex items-center justify-around px-2 sticky bottom-0 z-30 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] pb-safe-bottom min-w-0">
         <button
           onClick={() => setMobileTab('history')}
           className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${mobileTab === 'history' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/10 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
@@ -3594,12 +3441,12 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         </button>
 
         <button
-          onClick={() => setIsAssistantOpen(true)}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer relative ${isAssistantOpen ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/10 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+          onClick={() => setMobileTab('chat')}
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${mobileTab === 'chat' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/10 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
         >
-          <Bot className="h-4.5 w-4.5" />
-          <span className="text-[10px] font-sans">AI</span>
-          {(isStreaming || isQaStreaming) && (
+          <MessageSquare className="h-4.5 w-4.5" />
+          <span className="text-[10px] font-sans">Assistants</span>
+          {isQaStreaming && (
             <span className="absolute top-1 right-3.5 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
           )}
         </button>
