@@ -67,8 +67,11 @@ import {
   Bell,
   HelpCircle,
   MoreVertical,
-  Star
+  Star,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
+import { SecondaryViews } from './components/SecondaryViews';
 import {
   DndContext,
   closestCenter,
@@ -335,8 +338,69 @@ export default function App() {
   };
   
   // Custom Dashboard-Dost v2.0 Workspace states
-  const [activeSidebarMenu, setActiveSidebarMenu] = useState<'home' | 'dashboards' | 'datasets' | 'explorer' | 'reports' | 'settings'>('home');
+  const [activeSidebarMenu, setActiveSidebarMenu] = useState<
+    'home' | 'dashboards' | 'datasets' | 'explorer' | 'templates' | 'reports' | 'alerts' | 
+    'assistant' | 'insights' | 'anomaly' | 'narrative' | 'users' | 'settings' | 'audit' | 
+    'help' | 'feedback' | 'trash'
+  >('home');
   const [isStarred, setIsStarred] = useState(false);
+
+  const [panelWidth, setPanelWidth] = useState(() => {
+    try {
+      const stored = localStorage.getItem('floatingPanelWidth');
+      return stored ? parseInt(stored, 10) : 420;
+    } catch {
+      return 420;
+    }
+  });
+
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState('');
+
+  const isResizingRef = useRef(false);
+
+  useEffect(() => {
+    localStorage.setItem('floatingPanelWidth', String(panelWidth));
+  }, [panelWidth]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizingRef.current) return;
+    const newWidth = window.innerWidth - e.clientX;
+    if (newWidth > 320 && newWidth < 800) {
+      setPanelWidth(newWidth);
+    }
+  };
+
+  const handleMouseUp = () => {
+    isResizingRef.current = false;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+      if (e.key === 'Escape') {
+        setIsCommandPaletteOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
   
   // Skeleton loader component
   const DashboardSkeleton = () => (
@@ -2097,51 +2161,60 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       )}
 
       {/* CORE WORKSPACE PORTION */}
-      <PanelGroup orientation="horizontal" className="flex-1 w-full h-full relative min-h-0 min-w-0">
+      <div className="flex-1 w-full h-full relative flex overflow-hidden min-h-0 min-w-0">
         
         {/* PANEL A: LEFT SIDEBAR - PREMIUM NAVIGATION */}
-        {!isLeftSidebarCollapsed && (
-          <Panel id="left-sidebar" collapsible={true} defaultSize={15} maxSize={30} minSize={15} className="h-full border-r border-slate-200 dark:border-zinc-900 bg-white dark:bg-[#0d0f17] flex flex-col z-30">
-             <div className="p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar z-30 min-w-0">
+        <aside 
+          className={`h-full border-r border-slate-200 dark:border-zinc-900 bg-white dark:bg-[#07080d] flex flex-col shrink-0 transition-all duration-300 z-35 min-w-0 select-none
+            ${isLeftSidebarCollapsed ? 'w-18' : 'w-64'}
+          `}
+        >
+          <div className="p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar z-30 min-w-0">
               {/* Logo container brand segment */}
               <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-slate-100 dark:border-zinc-800/60 min-w-0">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-indigo-600 shadow-md min-w-0">
+                  <div className="flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-indigo-600 shadow-md min-w-0 shrink-0">
                     <div className="relative flex items-center justify-center h-5 w-5 rounded-full border border-white/90 min-w-0">
                       <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                     </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-extrabold text-[13.5px] tracking-tight text-slate-900 dark:text-white font-sans">
-                        Dashboard-Dost
+                  {!isLeftSidebarCollapsed && (
+                    <div className="animate-in fade-in duration-200">
+                      <div className="flex items-center gap-1.5 min-w-0 font-sans">
+                        <span className="font-extrabold text-[13px] tracking-tight text-slate-900 dark:text-white">
+                          Dashboard-Dost
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-white bg-violet-605">v2.0</span>
+                      </div>
+                      <span className="text-[9px] text-slate-405 dark:text-zinc-550 font-medium tracking-wide block">
+                        AI-Powered Analytics Platform
                       </span>
-                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-white bg-violet-600">v2.0</span>
                     </div>
-                    <span className="text-[9px] text-slate-400 dark:text-zinc-550 font-medium tracking-wide block">
-                      AI-Powered Analytics Platform
-                    </span>
-                  </div>
+                  )}
                 </div>
-                <button onClick={() => setIsLeftSidebarCollapsed(true)} className="lg:hidden p-1.5 hover:bg-slate-105 dark:hover:bg-zinc-800 rounded-lg text-slate-400">
-                  <X className="h-4 w-4" />
-                </button>
+                {!isLeftSidebarCollapsed && (
+                  <button onClick={() => setIsLeftSidebarCollapsed(true)} className="lg:hidden p-1.5 hover:bg-slate-105 dark:hover:bg-zinc-800 rounded-lg text-slate-400">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
 
               {/* New Dashboard primary action CTA */}
               <div className="mb-6">
                 <button
                   onClick={handleNewDashboard}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-700 bg-gradient-to-r from-violet-600 to-indigo-650 hover:from-violet-700 hover:to-indigo-700 transition-all font-sans cursor-pointer shadow-md inline-flex items-center justify-center group min-w-0"
-                  title="Start a fresh blank dashboard session"
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-755 bg-gradient-to-r from-violet-600 to-indigo-650 hover:from-violet-700 hover:to-indigo-700 transition-all font-sans cursor-pointer shadow-md inline-flex items-center group min-w-0
+                    ${isLeftSidebarCollapsed ? 'p-2.5 justify-center' : ''}
+                  `}
+                  title="New Dashboard Session"
                 >
-                  <Plus className="h-3.5 w-3.5 transition-transform group-hover:rotate-90" />
-                  <span>+ New Dashboard</span>
+                  <Plus className="h-4 w-4 transition-transform group-hover:rotate-90 shrink-0" />
+                  {!isLeftSidebarCollapsed && <span className="animate-in fade-in duration-150 truncate">New Dashboard</span>}
                 </button>
               </div>
 
               {/* SaaS Navigation groups */}
-              <div className="space-y-6 flex-1 min-w-0">
+              <div className="space-y-6 flex-1 min-w-0 text-left">
                 {[
                   {
                     title: "WORKSPACE",
@@ -2158,7 +2231,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {
                     title: "AI ANALYTICS",
                     items: [
-                      { id: 'assistant', label: 'AI Assistant', icon: Bot, badge: 'New', action: () => { setMobileTab('chat'); if (isQAPanelCollapsed) setIsQAPanelCollapsed(false); } },
+                      { id: 'assistant', label: 'AI Assistant', icon: Bot, badge: 'New', action: () => { if (isQAPanelCollapsed) setIsQAPanelCollapsed(false); } },
                       { id: 'insights', label: 'Smart Insights', icon: Sparkles, action: fetchAIInsights },
                     ]
                   },
@@ -2170,10 +2243,12 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     ]
                   }
                 ].map((group) => (
-                  <div key={group.title} className="space-y-1.5">
-                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-widest font-mono block px-2.5">
-                      {group.title}
-                    </span>
+                  <div key={group.title} className="space-y-1.5 font-sans">
+                    {!isLeftSidebarCollapsed && (
+                      <span className="text-[9px] font-bold text-slate-405 dark:text-zinc-500 tracking-widest font-mono block px-2.5 animate-in fade-in duration-150">
+                        {group.title}
+                      </span>
+                    )}
                     <div className="space-y-0.5">
                       {group.items.map((item) => {
                         const Icon = item.icon;
@@ -2187,16 +2262,17 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                             }}
                             className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
                               isActive
-                                ? 'bg-indigo-50 text-indigo-705 dark:bg-zinc-900 dark:text-indigo-400 font-bold'
-                                : 'text-slate-655 hover:text-slate-900 hover:bg-slate-50 dark:text-zinc-400 dark:hover:text-zinc-250 dark:hover:bg-zinc-900/40'
-                            }`}
+                                ? 'bg-indigo-50 text-indigo-705 dark:bg-zinc-900 dark:text-indigo-405 font-bold'
+                                : 'text-slate-655 hover:text-slate-930 hover:bg-slate-50 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-zinc-900/40'
+                            } ${isLeftSidebarCollapsed ? 'justify-center px-1' : ''}`}
+                            title={item.label}
                           >
                             <span className="flex items-center gap-2.5 min-w-0">
-                              <Icon className={`h-4 w-4 shrink-0 transition-transform ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
-                              <span>{item.label}</span>
+                              <Icon className={`h-4.5 w-4.5 shrink-0 transition-transform ${isActive ? 'text-indigo-650 dark:text-indigo-400 scale-105' : 'text-slate-400'}`} />
+                              {!isLeftSidebarCollapsed && <span className="animate-in fade-in duration-150 truncate">{item.label}</span>}
                             </span>
-                            {item.badge && (
-                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-indigo-100 text-indigo-805 dark:bg-indigo-950 dark:text-indigo-400 border border-indigo-200/30 font-sans tracking-wider">
+                            {!isLeftSidebarCollapsed && item.badge && (
+                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-indigo-100 text-indigo-805 dark:bg-indigo-950 dark:text-indigo-400 border border-indigo-200/30 tracking-wider animate-in scale-in duration-150">
                                 {item.badge}
                               </span>
                             )}
@@ -2207,67 +2283,91 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   </div>
                 ))}
 
-                {/* Quick Saved Dashboard Ingestion on left side */}
-                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/40">
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-widest font-mono block px-2.5 mb-2">
-                    ACTIVE WORKSPACE LIST
-                  </span>
-                  <div className="max-h-56 overflow-y-auto custom-scrollbar">
-                    <SavedDashboardsManager onLoadDashboard={handleLoadDashboardMeta} />
+                {/* Quick Saved Dashboard Ingestion list */}
+                {!isLeftSidebarCollapsed && (
+                  <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/40 animate-in fade-in duration-200">
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-555 tracking-widest font-mono block px-2.5 mb-2">
+                      ACTIVE WORKSPACE
+                    </span>
+                    <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                      <SavedDashboardsManager onLoadDashboard={handleLoadDashboardMeta} />
+                    </div>
+                  </div>
+                )}
+
+                {!isLeftSidebarCollapsed && (
+                  <div className="animate-in fade-in duration-200">
+                    <RecentActivityWidget />
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Ingestion Input Form inside left sidebar when expanded */}
+              {!isLeftSidebarCollapsed && (
+                <div className="mt-6 mb-4 p-3.5 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5 space-y-2.5 animate-in fade-in duration-200 text-left">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-500 animate-pulse shrink-0" />
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 font-sans uppercase tracking-wider">
+                      Ingest & Build Studio
+                    </span>
+                  </div>
+                  
+                  <form onSubmit={handleLeftSidebarSubmit} className="space-y-1.5 font-sans">
+                    <input
+                      type="text"
+                      placeholder="Paste Metabase/Tableau URL..."
+                      value={leftSidebarInput}
+                      onChange={(e) => setLeftSidebarInput(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-[11px] bg-white border border-slate-250 outline-none rounded-lg focus:ring-2 focus:ring-indigo-600/10 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!leftSidebarInput.trim() || isStreaming}
+                      className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-705 text-[10px] font-bold uppercase tracking-wider font-mono rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 min-w-0"
+                    >
+                      <span>Compile & Render</span>
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Storage Metric progress bar */}
+              {!isLeftSidebarCollapsed && (
+                <div className="mt-2 p-3.5 rounded-xl bg-slate-50 border border-slate-205 dark:bg-zinc-900/30 dark:border-zinc-850 space-y-2 animate-in fade-in duration-200 shrink-0 text-left">
+                  <div className="flex items-center justify-between min-w-0 font-sans">
+                    <span className="text-[9px] font-bold text-slate-405 dark:text-zinc-550 uppercase tracking-widest font-mono">Workspace Storage</span>
+                    <span className="text-[9px] font-bold text-slate-705 dark:text-zinc-330 font-mono">6.5 GB / 10 GB</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden font-sans">
+                    <div className="h-full w-[65%] bg-indigo-600 dark:bg-indigo-505 rounded-full animate-pulse" />
                   </div>
                 </div>
+              )}
 
-                <RecentActivityWidget />
-              </div>
-
-              {/* Quick Universal Ingestion form inside left side */}
-              <div className="mt-6 mb-4 p-3.5 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5 space-y-2.5">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Sparkles className="h-3.5 w-3.5 text-indigo-500 animate-pulse shrink-0" />
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 font-sans uppercase tracking-wider">
-                    Ingest & Build Studio
-                  </span>
-                </div>
-                
-                <form onSubmit={handleLeftSidebarSubmit} className="space-y-1.5">
-                  <input
-                    type="text"
-                    placeholder="Paste Metabase/Tableau URL..."
-                    value={leftSidebarInput}
-                    onChange={(e) => setLeftSidebarInput(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-[11px] bg-white border border-slate-250 outline-none rounded-lg focus:ring-2 focus:ring-indigo-600/10 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!leftSidebarInput.trim() || isStreaming}
-                    className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-705 text-[10px] font-bold uppercase tracking-wider font-mono rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 min-w-0"
-                  >
-                    <span>Compile & Render</span>
-                  </button>
-                </form>
-              </div>
-
-              {/* STORAGE METRIC CAPSULE */}
-              <div className="mt-2 p-3.5 rounded-xl bg-slate-50 border border-slate-205 dark:bg-zinc-900/30 dark:border-zinc-850 space-y-2">
-                <div className="flex items-center justify-between min-w-0">
-                  <span className="text-[9px] font-bold text-slate-405 dark:text-zinc-550 uppercase tracking-widest font-mono">Workspace Storage</span>
-                  <span className="text-[9px] font-bold text-slate-705 dark:text-zinc-305 font-mono">6.5 GB / 10 GB</span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
-                  <div className="h-full w-[65%] bg-indigo-600 dark:bg-indigo-500 rounded-full animate-pulse" />
-                </div>
+              {/* Left Sidebar Collapse toggle footer */}
+              <div className="border-t border-slate-100 dark:border-zinc-800/80 pt-3 mt-auto shrink-0 font-sans">
+                <button
+                  type="button"
+                  onClick={() => setIsLeftSidebarCollapsed(!isLeftSidebarCollapsed)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-655 dark:hover:text-zinc-200 transition-all font-mono"
+                  title={isLeftSidebarCollapsed ? "Expand Sidebar Menu" : "Collapse Sidebar Menu"}
+                >
+                  {isLeftSidebarCollapsed ? (
+                    <ChevronRight className="h-4.5 w-4.5 text-slate-400 hover:text-indigo-650" />
+                  ) : (
+                    <>
+                      <ChevronRight className="h-4.5 w-4.5 rotate-180 text-slate-400" />
+                      <span className="truncate">Collapse Menu</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-          </Panel>
-        )}
-        
-        {!isLeftSidebarCollapsed && (
-          <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
-        )}
+          </aside>
 
-        {/* PANEL B: MIDDLE DISPLAY CANVAS - CORE DASHBOARD VIEWPORT */}
-        <Panel id="main-content" className="flex flex-col min-w-0" defaultSize={isLeftSidebarCollapsed && isQAPanelCollapsed ? 100 : 55}>
-          <main className="p-4 sm:p-5 md:p-6 flex flex-col justify-start overflow-y-auto h-full custom-scrollbar bg-white dark:bg-[#0c0c11]/25 min-w-0">
+          {/* PANEL B: MIDDLE DISPLAY CANVAS - CORE DASHBOARD VIEWPORT */}
+          <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-white dark:bg-[#08080c]/35">
+            <main className="p-4 sm:p-5 md:p-6 flex flex-col justify-start overflow-y-auto h-full custom-scrollbar text-left min-w-0">
           
           {isCanvasLoading ? (
              <DashboardSkeleton />
@@ -2971,48 +3071,85 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           )}
 
         </main>
-        </Panel>
+        </div>
 
-        {/* PANEL C: RIGHT SIDEBAR - ASSISTANTS & CONVERSATIONS */}
-        {!isQAPanelCollapsed && (
-          <>
-            <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
-            <Panel id="right-sidebar" defaultSize={20} collapsible={true} maxSize={40} minSize={15} className="bg-slate-50/70 dark:bg-[#09090c]/90 h-full overflow-hidden border-l border-slate-200 dark:border-zinc-900 transition-all flex flex-col z-30">
-              <div className="p-4 lg:p-5 flex flex-col h-full overflow-hidden z-30 min-w-0">
-                <div className="flex justify-between items-center mb-4 min-w-0">
-                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Panel</h3>
-                    <div className="flex gap-2 min-w-0">
-                      <button onClick={() => setIsQAPanelCollapsed(true)} className="p-1 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                </div>
-                
-                {/* Segmented Tab Headers */}
-                <div className="flex bg-slate-100 dark:bg-zinc-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-zinc-800 shadow-inner mb-4 w-full shrink-0 min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => setRightActiveChatTab('builder')}
-                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                      rightActiveChatTab === 'builder'
-                        ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
-                        : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
-                    }`}
+      </div>
+
+      {/* OVERLAY AI ASSISTANT MODAL (FLOATING) */}
+      {!isQAPanelCollapsed && (
+        <aside 
+          className="fixed top-20 right-6 bottom-6 max-w-[90vw] md:max-w-2xl bg-slate-50/95 dark:bg-[#090a10]/95 backdrop-blur-md rounded-3xl border border-slate-200/90 dark:border-zinc-800/80 shadow-2xl transition-all duration-300 ease-out flex flex-col overflow-hidden z-45 animate-in slide-in-from-right duration-350"
+          style={{ width: `${panelWidth}px` }}
+        >
+          {/* Header & Resizability Handles & Minimize/Close Controls */}
+          <div className="p-4 lg:p-5 flex flex-col h-full overflow-hidden min-w-0">
+            <div className="flex justify-between items-center mb-3.5 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse shrink-0" />
+                <h3 className="text-xs font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest font-sans">Dust AI Workspace</h3>
+              </div>
+              <div className="flex items-center gap-1 min-w-0">
+                {/* Resizing grip slider controls */}
+                <div className="flex items-center gap-1.5 mr-2 px-1.5 py-0.5 rounded-md bg-slate-200/40 dark:bg-zinc-850/60 font-mono text-[9px] text-slate-500">
+                  <button 
+                    onClick={() => setPanelWidth(Math.max(340, panelWidth - 40))}
+                    className="p-1 px-1.5 text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-205 transition-colors cursor-pointer"
+                    title="Narrower workspace panel width"
                   >
-                    🛠️ Layout Builder
+                    -
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setRightActiveChatTab('qa')}
-                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                      rightActiveChatTab === 'qa'
-                        ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
-                        : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
-                    }`}
+                  <span className="font-extrabold">{panelWidth}px</span>
+                  <button 
+                    onClick={() => setPanelWidth(Math.min(650, panelWidth + 40))}
+                    className="p-1 px-1.5 text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-205 transition-colors cursor-pointer"
+                    title="Wider workspace panel width"
                   >
-                    💡 Data Analyst Q&A
+                    +
                   </button>
                 </div>
+                {/* Minimize toggles */}
+                <button 
+                  onClick={() => setIsQAPanelCollapsed(true)} 
+                  className="p-1.5 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                  title="Minimize chat overlay"
+                >
+                  <Minimize2 className="h-3.5 w-3.5" />
+                </button>
+                <button 
+                  onClick={() => setIsQAPanelCollapsed(true)} 
+                  className="p-1.5 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+                  title="Close panel"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            
+            {/* Segmented Tab Headers */}
+            <div className="flex bg-slate-100 dark:bg-zinc-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-zinc-800 shadow-inner mb-4 w-full shrink-0 min-w-0">
+              <button
+                type="button"
+                onClick={() => setRightActiveChatTab('builder')}
+                className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                  rightActiveChatTab === 'builder'
+                    ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
+                    : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
+                }`}
+              >
+                🛠️ Layout Builder
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightActiveChatTab('qa')}
+                className={`flex-1 py-1.5 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                  rightActiveChatTab === 'qa'
+                    ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
+                    : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
+                }`}
+              >
+                🤖 Q&A Analyst
+              </button>
+            </div>
 
                 {/* Active Tab View */}
           <div className="flex-1 flex flex-col min-h-0 min-w-0">
@@ -3412,12 +3549,9 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               </div>
             )}
           </div>
-              </div>
-            </Panel>
-          </>
-        )}
-
-      </PanelGroup>
+        </div>
+      </aside>
+    )}
 
       {/* FLOATING CHAT BUTTON WHEN COLLAPSED */}
       {isQAPanelCollapsed && (
