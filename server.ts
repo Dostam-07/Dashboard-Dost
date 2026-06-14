@@ -18,7 +18,7 @@ const getActiveProvider = () => {
   if (geminiKey && geminiKey !== "MY_GEMINI_API_KEY" && geminiKey.trim() !== "") {
     return {
       provider: "gemini" as const,
-      providerName: "Google Gemini (gemini-flash-latest)",
+      providerName: "Google Gemini (gemini-1.5-flash)",
       isConfigured: true
     };
   } else if (openRouterKey && openRouterKey !== "MY_OPENROUTER_API_KEY" && openRouterKey.trim() !== "") {
@@ -74,7 +74,7 @@ async function callGeminiStreamWithFallback(
   contents: any[],
   systemInstruction: string,
   temperature: number,
-  initialModelPriorities: string[] = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+  initialModelPriorities: string[] = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 ) {
   let lastError: any = null;
 
@@ -100,12 +100,20 @@ async function callGeminiStreamWithFallback(
                             errorString.includes("unavailable") ||
                             errorString.includes("high demand") ||
                             errorString.includes("temporary") ||
-                            errorString.includes("rate") ||
-                            errorString.includes("limit") ||
                             error?.status === 503 ||
                             error?.code === 503;
 
-        if (isTransient && retries > 0) {
+        const isRateLimit = errorString.includes("rate") ||
+                            errorString.includes("limit") ||
+                            errorString.includes("quota") ||
+                            error?.status === 429 ||
+                            error?.code === 429;
+
+
+        if (isRateLimit) {
+          console.warn(`[Gemini Fallback] Rate limit hit on model ${model}. Immediately trying next model...`);
+          break;
+        } else if (isTransient && retries > 0) {
           console.warn(`[Gemini Retry] Model ${model} returned transient error. Retrying in ${delay}ms... (${retries} attempts left)`);
           await new Promise((resolve) => setTimeout(resolve, delay));
           delay = Math.floor(delay * 1.5);
@@ -126,7 +134,7 @@ async function callGeminiContentWithFallback(
   prompt: string,
   systemInstruction: string,
   temperature: number,
-  initialModelPriorities: string[] = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+  initialModelPriorities: string[] = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
 ) {
   let lastError: any = null;
 
@@ -152,12 +160,20 @@ async function callGeminiContentWithFallback(
                             errorString.includes("unavailable") ||
                             errorString.includes("high demand") ||
                             errorString.includes("temporary") ||
-                            errorString.includes("rate") ||
-                            errorString.includes("limit") ||
                             error?.status === 503 ||
                             error?.code === 503;
 
-        if (isTransient && retries > 0) {
+        const isRateLimit = errorString.includes("rate") ||
+                            errorString.includes("limit") ||
+                            errorString.includes("quota") ||
+                            error?.status === 429 ||
+                            error?.code === 429;
+
+
+        if (isRateLimit) {
+          console.warn(`[Gemini Fallback] Rate limit hit on model ${model}. Immediately trying next model...`);
+          break;
+        } else if (isTransient && retries > 0) {
           console.warn(`[Gemini Retry] Model ${model} returned transient error. Retrying in ${delay}ms... (${retries} attempts left)`);
           await new Promise((resolve) => setTimeout(resolve, delay));
           delay = Math.floor(delay * 1.5);
@@ -264,7 +280,7 @@ Core Operations Directives:
           contents,
           systemInstruction,
           0.1,
-          ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
+          ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
         );
 
         // Successfully acquired stream, now set headers
@@ -326,6 +342,13 @@ Core Operations Directives:
                     error?.status === 503 ||
                     error?.code === 503;
 
+        const isRateLimit = errorString.includes("rate") ||
+                            errorString.includes("limit") ||
+                            errorString.includes("quota") ||
+                            error?.status === 429 ||
+                            error?.code === 429;
+
+
       let friendlyMessage = error?.message || "Something went wrong while generating details. Check server connection.";
       if (is503) {
         friendlyMessage = "Google Gemini is currently experiencing temporary high demand (553 Unavailable). Please click an Idea Template above to use pre-compiled visual assets, or try clicking Send again in a few seconds!";
@@ -352,12 +375,15 @@ Core Operations Directives:
       const ai = getGeminiClient();
       const prompt = `Based on the dashboard titled "${payload.title}" with components: ${JSON.stringify(payload.components?.map((c: any) => c.title) || [])}, suggest 3 short and insightful questions a user could ask. Return ONLY a JSON array of 3 strings, nothing else.`;
       
-      const result = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt
-      });
+      const response = await callGeminiContentWithFallback(
+        ai,
+        prompt,
+        "You are a helpful assistant that suggests dashboard questions.",
+        0.5,
+        ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+      );
 
-      const text = result.response.text();
+      const text = response.text || "";
       const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
       res.json(JSON.parse(cleaned));
     } catch (e) {
@@ -365,6 +391,224 @@ Core Operations Directives:
       res.status(200).json(["Tell me about the main performance trends.", "What are the key KPIs for this dashboard?", "Summarize the data in 3 points."]);
     }
   });
+
+  function extractDashboardIntelligence(payload: any): string {
+    if (!payload) return "";
+
+    const title = payload.title || "Untitled Dashboard";
+    const subtitle = payload.subtitle || "N/A";
+    const ingestedUrl = payload.ingestedUrl || "N/A";
+    const filters = payload.filters || [];
+    const components = payload.components || [];
+
+    let report = `DASHBOARD TITLE: ${title}
+SUBTITLE: ${subtitle}
+SOURCE INGESTED URL: ${ingestedUrl}
+
+--------------------------------------------------
+1. ACTIVE FILTERS DEFINED
+--------------------------------------------------
+${filters.length > 0 
+  ? filters.map((f: any) => `- ID: ${f.id}, Label: "${f.label}", Type: "${f.type}", Targets: ${JSON.stringify(f.targetKeys)}`).join("\n")
+  : "None"
+}
+
+--------------------------------------------------
+2. KEY PERFORMANCE INDICATORS (KPIs)
+--------------------------------------------------
+`;
+
+    const kpiCards = components.filter((c: any) => c.type === 'kpi_card');
+    if (kpiCards.length > 0) {
+      kpiCards.forEach((k: any, idx: number) => {
+        const val = k.config?.kpiValue || k.kpiValue || "N/A";
+        const trend = k.config?.kpiTrend ? `${k.config.kpiTrend.direction.toUpperCase()} (${k.config.kpiTrend.label})` : "None";
+        report += `KPI #${idx + 1}:
+  - Title: "${k.title}"
+  - Value: ${val}
+  - Description: ${k.description || "N/A"}
+  - Trend Indicator: ${trend}
+\n`;
+      });
+    } else {
+      report += "No KPI cards found.\n";
+    }
+
+    report += `
+--------------------------------------------------
+3. CHART & TABLE DATASETS & AGGREGATIONS
+--------------------------------------------------
+`;
+
+    components.forEach((comp: any, idx: number) => {
+      const rawData = comp.seriesData || [];
+      report += `Widget #${idx + 1} ["${comp.title}"]:
+  - ID: ${comp.id}
+  - Type: ${comp.type}
+  - Description: ${comp.description || "N/A"}
+  - Data Record Count: ${rawData.length} records.
+`;
+
+      if (rawData.length > 0) {
+        const keys = Object.keys(rawData[0]);
+        const numericKeys: string[] = [];
+        const categoricalKeys: string[] = [];
+
+        keys.forEach(k => {
+          const hasNumbers = rawData.some((row: any) => typeof row[k] === 'number' || (typeof row[k] === 'string' && !isNaN(Number(row[k]))));
+          const lowerKey = k.toLowerCase();
+          if (hasNumbers && !lowerKey.includes('id') && !lowerKey.includes('code') && !lowerKey.includes('year') && !lowerKey.includes('month') && !lowerKey.includes('date')) {
+            numericKeys.push(k);
+          } else {
+            categoricalKeys.push(k);
+          }
+        });
+
+        report += `  - Dimensions Detected: ${JSON.stringify(categoricalKeys)}
+  - Measures/Metrics Detected: ${JSON.stringify(numericKeys)}
+`;
+
+        const aggregations: Record<string, { sum: number, avg: number, min: number, max: number, count: number }> = {};
+        numericKeys.forEach(mKey => {
+          let sum = 0;
+          let count = 0;
+          let min = Infinity;
+          let max = -Infinity;
+
+          rawData.forEach((row: any) => {
+            const val = Number(row[mKey]);
+            if (!isNaN(val)) {
+              sum += val;
+              count++;
+              if (val < min) min = val;
+              if (val > max) max = val;
+            }
+          });
+
+          if (count > 0) {
+            aggregations[mKey] = {
+              sum,
+              avg: sum / count,
+              min,
+              max,
+              count
+            };
+          }
+        });
+
+        if (Object.keys(aggregations).length > 0) {
+          report += `  - Computed Aggregations:\n`;
+          Object.entries(aggregations).forEach(([mKey, agg]) => {
+            report += `    * Metric ["${mKey}"]: Sum={${agg.sum}}, Average={${agg.avg.toFixed(2)}}, Min={${agg.min}}, Max={${agg.max}} (based on {${agg.count}} rows)\n`;
+          });
+        }
+
+        report += `  - Full Dataset Raw Array:\n${JSON.stringify(rawData)}\n`;
+
+        categoricalKeys.forEach(catKey => {
+          const grouping: Record<string, Record<string, number>> = {};
+          rawData.forEach((row: any) => {
+            const catVal = String(row[catKey] || "Unknown");
+            if (!grouping[catVal]) grouping[catVal] = {};
+            numericKeys.forEach(mKey => {
+              const val = Number(row[mKey]);
+              if (!isNaN(val)) {
+                grouping[catVal][mKey] = (grouping[catVal][mKey] || 0) + val;
+              }
+            });
+          });
+
+          numericKeys.forEach(mKey => {
+            const sortedGroups = Object.entries(grouping)
+              .map(([catVal, vals]) => ({ category: catVal, value: vals[mKey] || 0 }))
+              .sort((a, b) => b.value - a.value);
+
+            if (sortedGroups.length > 0) {
+              report += `  - Ranked Categories by Metric ["${mKey}"] over dimension ["${catKey}"]:\n`;
+              sortedGroups.slice(0, 10).forEach((item, rIdx) => {
+                report += `    Rank #${rIdx + 1}: Category "${item.category}" = ${item.value}\n`;
+              });
+            }
+          });
+        });
+
+      } else {
+        report += "  - No series data array provided.\n";
+      }
+      report += "\n";
+    });
+
+    report += `
+--------------------------------------------------
+4. SEMANTIC SUMMARIES & COMPUTED INSIGHTS CUES
+--------------------------------------------------
+`;
+
+    let totalChallengesShared = 0;
+    let highestParticipationDistrict = { name: "N/A", value: 0 };
+    const districtParticipationMap: Record<string, number> = {};
+    const villageAttendanceMap: Record<string, number> = {};
+    
+    components.forEach((comp: any) => {
+      (comp.seriesData || []).forEach((row: any) => {
+        Object.entries(row).forEach(([k, v]) => {
+          const lowerK = k.toLowerCase();
+          const val = Number(v);
+          if (!isNaN(val)) {
+            if (lowerK.includes('challenges') && (lowerK.includes('shared') || lowerK.includes('count') || lowerK.includes('total'))) {
+              totalChallengesShared += val;
+            }
+            
+            let isDistrictKey = false;
+            let distName = "";
+            Object.entries(row).forEach(([rk, rv]) => {
+              const lowerRk = rk.toLowerCase();
+              if (lowerRk === 'district' || lowerRk === 'region' || lowerRk === 'state' || lowerRk === 'cat' || lowerRk === 'category') {
+                isDistrictKey = true;
+                distName = String(rv);
+              }
+            });
+            if (isDistrictKey && distName) {
+              if (lowerK.includes('participation') || lowerK.includes('attendance') || lowerK.includes('users') || lowerK.includes('count') || lowerK.includes('value')) {
+                districtParticipationMap[distName] = (districtParticipationMap[distName] || 0) + val;
+              }
+            }
+
+            let isVillageKey = false;
+            let villageName = "";
+            Object.entries(row).forEach(([rk, rv]) => {
+              const lowerRk = rk.toLowerCase();
+              if (lowerRk === 'village' || lowerRk === 'block' || lowerRk === 'town') {
+                isVillageKey = true;
+                villageName = String(rv);
+              }
+            });
+            if (isVillageKey && villageName) {
+              if (lowerK.includes('attendance') || lowerK.includes('participants') || lowerK.includes('value') || lowerK.includes('count')) {
+                villageAttendanceMap[villageName] = (villageAttendanceMap[villageName] || 0) + val;
+              }
+            }
+          }
+        });
+      });
+    });
+
+    const sortedDistricts = Object.entries(districtParticipationMap).sort((a,b) => b[1] - a[1]);
+    if (sortedDistricts.length > 0) {
+      highestParticipationDistrict = { name: sortedDistricts[0][0], value: sortedDistricts[0][1] };
+    }
+
+    const sortedVillages = Object.entries(villageAttendanceMap).sort((a,b) => b[1] - a[1]);
+
+    report += `- Total Extracted Challenges Shared: ${totalChallengesShared}
+- Highest Participation District: "${highestParticipationDistrict.name}" with total ${highestParticipationDistrict.value}
+- Ranked Districts Details: ${JSON.stringify(sortedDistricts)}
+- Top Villages by Attendance: ${JSON.stringify(sortedVillages.slice(0, 10))}
+==================================================
+`;
+
+    return report;
+  }
 
   // General chat endpoint for conversational Q&A over ingested URLs and layouts
   app.post("/api/chat", async (req, res) => {
@@ -377,45 +621,27 @@ Core Operations Directives:
     try {
       let payloadContext = "";
       if (payload) {
-        payloadContext = `
-ACTIVE DASHBOARD DATA CONTEXT:
-- Title: ${payload.title || "Untitled"}
-- Subtitle: ${payload.subtitle || "N/A"}
-- Source Ingested URL: ${payload.ingestedUrl || "N/A"}
-
-DASHBOARD FILTERS:
-${(payload.filters || []).map((f: any) => `- ID: ${f.id}, Label: "${f.label}", Type: "${f.type}", Target Keys: ${JSON.stringify(f.targetKeys)}`).join("\n") || "No filters defined"}
-
-DASHBOARD COMPONENTS & DATA SERIES:
-${(payload.components || []).map((comp: any, idx: number) => {
-  let dataSummary = "";
-  if (comp.seriesData && comp.seriesData.length > 0) {
-    dataSummary = `(Found ${comp.seriesData.length} records. Here is the exact data array: ${JSON.stringify(comp.seriesData)})`;
-  } else {
-    dataSummary = "(No series data)";
-  }
-  return `Widget #${idx + 1}:
-  - ID: ${comp.id}
-  - Type: ${comp.type}
-  - Title: "${comp.title}"
-  - Description: ${comp.description || "N/A"}
-  - KPI Value (if applicable): ${comp.config?.kpiValue || "N/A"}
-  - Configuration/Metadata: ${JSON.stringify(comp.config || {})}
-  - Series Data: ${dataSummary}`;
-}).join("\n\n")}
-`;
+        payloadContext = extractDashboardIntelligence(payload);
       }
 
-      const systemInstruction = `You are DostSight AI, an intelligent data analysis assistant. You have access to both your general knowledge base and, if provided, the user's active dashboard data.
+      const systemInstruction = `You are DostSight AI, an intelligent, production-grade AI-native BI workspaces data analyst and systems advisor. You have access to the Dashboard Intelligence Engine context of the user's active dashboard, calculated dynamically.
 
-1. General Knowledge: Answer general questions using your knowledge.
-2. Dashboard Grounding: If the user asks about specific dashboard metrics, trends, or data, ground your answer STICTLY in the active dashboard data (payloadContext) provided below. If the metric is not present in the dataset, state clearly that it is not available, then provide context based on your general knowledge if applicable.
-3. Verification Location (if grounded): At the end of every data-grounded answer, you MUST provide a precise location pathway formatted as: **Verification Location:** [Your constructed hierarchical path]
-4. Sources (if grounded): Identify relevant dashboard components by their ID and output: [SOURCES: widget_id_1, widget_id_2] (or [SOURCES: none])
+CRITICAL MENTALITIES & INSTRUCTIONS:
+1. STRICT DATA GROUNDING: You must answer specific metrics, calculations, trends, or question queries using the actual dashboard values, records, aggregations, ranks, and dataset arrays provided in the "ACTIVE DASHBOARD DATA CONTEXT" below. Never use hypothetical, mocked, calculated guesses or domain assumptions.
+2. IF LOGS/METRICS ARE MISSING OR UNAVAILABLE: If the user asks about a specific metric, area, or element that is not successfully ingested, is empty, is null, or is not in the data context, you MUST explicitly output: "The dashboard data for this metric was not ingested successfully." Do not invent excuses, generic explanations, or industry averages!
+3. ANSWER SPECS:
+   - For "How many challenges shared?": Look for categories and total / count metrics related to shared challenges in the data or KPI cards. Answer with the actual calculated sum or specific series totals, e.g., "The total number of challenges shared is X".
+   - For "Which district has the highest participation?": Cross-reference participation or engagement against district categories in the parsed series data. Report the exact district name and its total engagement score.
+   - For "What changed compared to last month?": Look at temporal time-series trends, monthly dates, area trends, or specified KPI trend directions. Speak in precise delta percentages or value changes.
+   - For "Show top 5 villages by attendance.": Scan village categories or dimension groupings, sort by attendance values, and output a exact numbered listing of the top 5 villages, showing their specific counts.
+4. INGESTION VERIFICATION: Never claim a dashboard is fully ingested unless all dashboard units (KPI cards, charts, datasets) are active. In your responses, confidently ground yourself on the parsed semantic context object provided.
+5. SOURCE PATHWAYS & LOCATIONS:
+   - At the end of every data-grounded answer, provide the precise location pathway formatted as: **Verification Location:** [Your constructed hierarchical path]
+   - Identify relevant dashboard components by their ID and output sources tag at the very end: [SOURCES: widget_id_1, widget_id_2] (or [SOURCES: none])
 
-${payloadContext ? `Active Dashboard Data for Grounding: ${payloadContext}` : 'No active dashboard data loaded. Answer based on general knowledge.'}
+${payloadContext ? `ACTIVE DASHBOARD DATA CONTEXT:\n${payloadContext}` : 'No active dashboard data loaded. Please ask the user to load or create a dashboard first.'}
 
-Keep responses in professional markdown. Speak as an expert advisor. Use bolding and tables for complex metrics. Do not output raw JSON.`;
+Keep responses in beautiful, professional markdown. Speak as a Senior BI Architect and Expert Advisor. Use clean, high-contrast tables for complex tabular lists and metrics. Do not output raw JSON.`;
 
       if (active.provider === "gemini") {
         const ai = getGeminiClient();
@@ -459,7 +685,7 @@ Keep responses in professional markdown. Speak as an expert advisor. Use bolding
           contents,
           systemInstruction,
           0.3,
-          ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+          ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
         );
 
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -541,7 +767,7 @@ Keep responses in professional markdown. Speak as an expert advisor. Use bolding
           prompt,
           systemInstruction,
           0.2,
-          ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
+          ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
         );
 
         res.json({ insights: response.text || "" });
@@ -570,6 +796,13 @@ Keep responses in professional markdown. Speak as an expert advisor. Use bolding
                     errorString.toLowerCase().includes("temporary") ||
                     error?.status === 503 ||
                     error?.code === 503;
+
+        const isRateLimit = errorString.includes("rate") ||
+                            errorString.includes("limit") ||
+                            errorString.includes("quota") ||
+                            error?.status === 429 ||
+                            error?.code === 429;
+
 
       let friendlyMessage = error?.message || "Insights Generation Failed";
       if (is503) {

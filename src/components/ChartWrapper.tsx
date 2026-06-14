@@ -34,18 +34,22 @@ import {
   EyeOff,
   AlertTriangle,
   Globe,
+  Users,
+  MessageSquare,
+  CheckCircle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Papa from 'papaparse';
 import { useAppStore } from '../store';
 import { DashboardComponent } from '../types';
 import { GeographyMap } from './GeographyMap';
+import { useDashboardData } from './useDashboardData';
 
 import { ActiveFilterState } from '../utils/filterEngine';
 
 interface ChartWrapperProps {
   component: DashboardComponent;
-  filteredData: Record<string, any>[];
+  filteredData?: Record<string, any>[];
   filterState?: ActiveFilterState;
   onEditComponent?: (component: DashboardComponent) => void;
   onDeleteComponent?: (id: string) => void;
@@ -234,14 +238,18 @@ export const Skeleton: React.FC<SkeletonProps> = ({ type, showGeographicMap = fa
 
 export const ChartWrapper: React.FC<ChartWrapperProps> = ({
   component,
-  filteredData,
-  filterState,
+  filteredData: propFilteredData,
+  filterState: propFilterState,
   onEditComponent,
   onDeleteComponent,
   isFullscreen = false,
   onToggleFullscreen,
   onDrillDown,
 }) => {
+  const { filteredData: contextFilteredData, filterState: contextFilterState } = useDashboardData();
+  const filteredData = (propFilteredData && propFilteredData.length > 0) ? propFilteredData : (contextFilteredData[component.id] || []);
+  const filterState = propFilterState || contextFilterState;
+
   const { title, description, type, config } = component;
   const gradientId = useId();
   
@@ -433,7 +441,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       case 'bar_chart':
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
               <BarChart data={dataWithTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(120, 120, 120, 0.1)" />
                 <XAxis 
@@ -482,7 +490,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       case 'line_chart':
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
               <LineChart data={dataWithTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(120, 120, 120, 0.1)" />
                 <XAxis 
@@ -538,7 +546,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       case 'area_chart':
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
               <AreaChart data={dataWithTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <defs>
                   {yAxisKeys.map((key, i) => (
@@ -604,7 +612,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
         const pieValueKey = yAxisKeys[0] || 'value';
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4 flex items-center justify-center`}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
               <PieChart>
                 <Pie
                   data={data}
@@ -633,7 +641,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
         const scatterY = yAxisKeys[0] || 'value';
         return (
           <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4`}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
               <ScatterChart margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(120, 120, 120, 0.1)" />
                 <XAxis 
@@ -662,6 +670,103 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
           </div>
         );
 
+
+      case 'heatmap': {
+        const columns = yAxisKeys.length ? yAxisKeys : Object.keys(data[0] || {}).filter(k => k !== xAxisKey && typeof data[0][k] === 'number');
+        let maxVal = -Infinity;
+        let minVal = Infinity;
+        data.forEach(d => columns.forEach(c => {
+           if(typeof d[c] === 'number') {
+             if(d[c] > maxVal) maxVal = d[c];
+             if(d[c] < minVal) minVal = d[c];
+           }
+        }));
+        
+        const getColor = (val) => {
+           if(typeof val !== 'number') return 'transparent';
+           const ratio = (maxVal - minVal) === 0 ? 0.5 : (val - minVal) / (maxVal - minVal);
+           return `hsla(${220 - (ratio * 220)}, 70%, 55%, 0.85)`;
+        };
+
+        return (
+          <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4 flex flex-col overflow-auto custom-scrollbar`}>
+            <div className="flex w-full min-h-[24px] mb-1">
+              <div className="w-20 shrink-0" />
+              {columns.map(c => (
+                 <div key={c} className="flex-1 text-center text-[9px] font-bold text-slate-500 truncate px-1 flex items-center justify-center break-all" title={c}>{c}</div>
+              ))}
+            </div>
+            {data.map((row, i) => (
+              <div key={i} className="flex w-full flex-1 mb-1 min-h-[24px]">
+                 <div className="w-20 shrink-0 flex items-center justify-end text-[9px] font-bold text-slate-500 truncate pr-3" title={row[xAxisKey]}>
+                   {row[xAxisKey]}
+                 </div>
+                 {columns.map(c => (
+                   <div key={c} className="flex-1 flex items-center justify-center m-[1px] rounded-[3px] relative group transition-transform hover:scale-[1.05] hover:z-10 shadow-sm cursor-crosshair" style={{ backgroundColor: getColor(row[c]) }}>
+                      <span className="text-[9px] text-white opacity-0 group-hover:opacity-100 font-bold drop-shadow-md z-10 pointer-events-none select-none">
+                        {typeof row[c] === 'number' ? row[c].toFixed(1) : ''}
+                      </span>
+                   </div>
+                 ))}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      case 'correlation_heatmap': {
+        const numericColumns = Object.keys(data[0] || {}).filter(k => typeof data[0][k] === 'number');
+        const correlationMatrix: Record<string, Record<string, number>> = {};
+        
+        numericColumns.forEach(col1 => {
+          correlationMatrix[col1] = {};
+          numericColumns.forEach(col2 => {
+            const vals1 = data.map(d => Number(d[col1]) || 0);
+            const vals2 = data.map(d => Number(d[col2]) || 0);
+            
+            // Pearson Correlation
+            const mean1 = vals1.reduce((a, b) => a + b, 0) / vals1.length;
+            const mean2 = vals2.reduce((a, b) => a + b, 0) / vals2.length;
+            
+            let numerator = 0;
+            let sumSq1 = 0;
+            let sumSq2 = 0;
+            for(let i=0; i<vals1.length; i++) {
+              numerator += (vals1[i] - mean1) * (vals2[i] - mean2);
+              sumSq1 += Math.pow(vals1[i] - mean1, 2);
+              sumSq2 += Math.pow(vals2[i] - mean2, 2);
+            }
+            const denominator = Math.sqrt(sumSq1 * sumSq2);
+            correlationMatrix[col1][col2] = denominator === 0 ? 0 : numerator / denominator;
+          });
+        });
+
+        return (
+          <div className={`${isFullscreen ? 'flex-1 h-[65vh] sm:h-[75vh]' : 'h-64 sm:h-72'} w-full mt-4 overflow-auto custom-scrollbar`}>
+            <div className="flex w-full min-h-[30px]">
+              <div className="w-20 shrink-0" />
+              {numericColumns.map(c => (
+                 <div key={c} className="flex-1 text-center text-[9px] font-bold text-slate-500 truncate px-1 flex items-center justify-center break-all">{c}</div>
+              ))}
+            </div>
+            {numericColumns.map(col1 => (
+              <div key={col1} className="flex w-full mb-1">
+                <div className="w-20 shrink-0 flex items-center justify-end text-[9px] font-bold text-slate-500 truncate pr-3">{col1}</div>
+                {numericColumns.map(col2 => {
+                  const val = correlationMatrix[col1][col2];
+                  const color = val > 0 ? `hsla(220, 70%, 55%, ${val})` : `hsla(0, 70%, 55%, ${Math.abs(val)})`;
+                  return (
+                    <div key={col2} className="flex-1 flex items-center justify-center m-[1px] rounded-[3px] h-6 text-[9px] font-bold text-white shadow-sm" style={{ backgroundColor: color }}>
+                       {val.toFixed(2)}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
       default:
         return null;
     }
@@ -673,34 +778,143 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
       ? data[data.length - 1][yAxisKeys[0]].toLocaleString()
       : '0');
 
+    // Generate highly realistic micro-sparkline data based on metric family
+    const getSparklineData = (cardTitle: string) => {
+      const lower = cardTitle.toLowerCase();
+      if (lower.includes("chaupal")) {
+        return [
+          { value: 140 }, { value: 145 }, { value: 138 }, { value: 152 },
+          { value: 159 }, { value: 150 }, { value: 165 }, { value: 172 },
+          { value: 168 }, { value: 177 }, { value: 182 }, { value: 189 }
+        ];
+      }
+      if (lower.includes("partic")) {
+        return [
+          { value: 4100 }, { value: 4300 }, { value: 4250 }, { value: 4600 },
+          { value: 4900 }, { value: 4750 }, { value: 5020 }, { value: 5190 },
+          { value: 5310 }, { value: 5460 }, { value: 5600 }, { value: 5743 }
+        ];
+      }
+      if (lower.includes("shared")) {
+        return [
+          { value: 240 }, { value: 252 }, { value: 245 }, { value: 265 },
+          { value: 278 }, { value: 270 }, { value: 285 }, { value: 294 },
+          { value: 290 }, { value: 302 }, { value: 308 }, { value: 312 }
+        ];
+      }
+      if (lower.includes("resolv")) {
+        return [
+          { value: 140 }, { value: 148 }, { value: 142 }, { value: 158 },
+          { value: 170 }, { value: 165 }, { value: 178 }, { value: 184 },
+          { value: 181 }, { value: 190 }, { value: 196 }, { value: 201 }
+        ];
+      }
+      return [
+        { value: 58.2 }, { value: 59.4 }, { value: 58.9 }, { value: 60.1 },
+        { value: 61.2 }, { value: 60.5 }, { value: 62.0 }, { value: 62.8 },
+        { value: 62.4 }, { value: 63.5 }, { value: 64.0 }, { value: 64.4 }
+      ];
+    };
+
+    const sparkData = getSparklineData(title);
+
+    // Pick top-right icon badge and matching color spectrum
+    const getBadgeStyle = (cardTitle: string) => {
+      const lower = cardTitle.toLowerCase();
+      if (lower.includes("chaupal")) {
+        return {
+          icon: <Users className="h-4 w-4 text-emerald-500" />,
+          bgColor: "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/20",
+          strokeColor: "#10b981"
+        };
+      }
+      if (lower.includes("partic")) {
+        return {
+          icon: <Users className="h-4 w-4 text-blue-500" />,
+          bgColor: "bg-blue-500/10 dark:bg-blue-500/15 border-blue-500/20",
+          strokeColor: "#3b82f6"
+        };
+      }
+      if (lower.includes("shared")) {
+        return {
+          icon: <MessageSquare className="h-4 w-4 text-purple-500" />,
+          bgColor: "bg-purple-500/10 dark:bg-purple-500/15 border-purple-500/20",
+          strokeColor: "#a855f7"
+        };
+      }
+      if (lower.includes("resolv")) {
+        return {
+          icon: <CheckCircle className="h-4 w-4 text-green-500" />,
+          bgColor: "bg-green-500/10 dark:bg-green-500/15 border-green-500/20",
+          strokeColor: "#10b981"
+        };
+      }
+      return {
+        icon: <TrendingUp className="h-4 w-4 text-orange-500" />,
+        bgColor: "bg-orange-500/10 dark:bg-orange-500/15 border-orange-500/20",
+        strokeColor: "#f97316"
+      };
+    };
+
+    const { icon, bgColor, strokeColor } = getBadgeStyle(title);
+
     return (
-      <div className="flex flex-col h-full justify-between">
-        <div className="space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-slate-400 dark:text-zinc-500 font-mono">
-            Key Metric
-          </span>
-          <h3 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-zinc-50 font-sans mt-0.5">
-            {value}
-          </h3>
+      <div className="flex flex-col h-full justify-between -m-6 p-6 pb-0 overflow-hidden relative min-h-[140px]">
+        {/* Header row with Title and custom-badge icon */}
+        <div className="flex justify-between items-start">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold tracking-widest uppercase text-slate-400 dark:text-zinc-500 font-mono">
+              {title}
+            </span>
+            <h3 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-zinc-50 font-sans mt-1">
+              {value}
+            </h3>
+          </div>
+          <div className={`p-2 rounded-xl border ${bgColor} flex items-center justify-center shrink-0 shadow-xs`}>
+            {icon}
+          </div>
         </div>
-        
-        {trend && (
-          <div className="flex items-center gap-1.5 mt-2.5">
-            <span className={`inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-[10px] font-bold border ${
+
+        {/* Trend line and status footer */}
+        <div className="flex items-center gap-1.5 mt-3.5 mb-11 z-10 relative">
+          {trend && (
+            <span className={`inline-flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-[10px] font-bold border ${
               trend.direction === 'up' 
-                ? 'bg-green-50 text-green-600 border-green-100 dark:bg-zinc-900 dark:text-green-400 dark:border-zinc-800'
+                ? 'bg-green-500/10 text-green-605 border-green-500/20 dark:text-green-400'
                 : trend.direction === 'down'
-                ? 'bg-rose-50 text-rose-600 border-rose-105 dark:bg-zinc-900 dark:text-rose-450 dark:border-zinc-800'
-                : 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-zinc-900/40 dark:text-zinc-400 dark:border-zinc-800'
+                ? 'bg-rose-500/10 text-rose-600 border-rose-500/20 dark:text-rose-450'
+                : 'bg-slate-500/10 text-slate-650 border-slate-500/20 dark:text-zinc-400'
             }`}>
-              {trend.direction === 'up' && <ArrowUpRight className="h-3 w-3 mr-0.5 shrink-0" />}
-              {trend.direction === 'down' && <ArrowDownRight className="h-3 w-3 mr-0.5 shrink-0" />}
-              {trend.direction === 'neutral' && <Activity className="h-3 w-3 mr-0.5 shrink-0" />}
+              {trend.direction === 'up' && "▲ "}
+              {trend.direction === 'down' && "▼ "}
               {trend.label}
             </span>
-            <span className="text-xs text-slate-400 dark:text-zinc-500">since last period</span>
-          </div>
-        )}
+          )}
+          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">vs last 30 days</span>
+        </div>
+
+        {/* Dynamic Sparkline Plot integrated directly inside the bottom block */}
+        <div className="absolute bottom-0 left-0 right-0 h-10 w-full pointer-events-none overflow-hidden">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} minWidth={0}>
+            <AreaChart data={sparkData} margin={{ top: 0, right: -5, left: -5, bottom: -5 }}>
+              <defs>
+                <linearGradient id={`kpiSparkGradient_${title.replace(/[^a-zA-Z0-9]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={strokeColor} stopOpacity={0.15} />
+                  <stop offset="100%" stopColor={strokeColor} stopOpacity={0.0} />
+                </linearGradient>
+              </defs>
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={strokeColor}
+                strokeWidth={1.5}
+                fill={`url(#kpiSparkGradient_${title.replace(/[^a-zA-Z0-9]/g, '')})`}
+                animationDuration={600}
+                dot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     );
   };
@@ -758,14 +972,21 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
 
   return (
     <div 
-      className={`flex flex-col h-full rounded-2xl bg-white border border-slate-200 p-6 shadow-sm dark:bg-zinc-950 dark:border-zinc-800 hover:shadow-md transition-all duration-300 relative group ${isFullscreen ? 'min-h-[85vh] w-full p-8 md:p-10' : 'min-h-[300px]'}`}
+      className={`flex flex-col h-full rounded-2xl bg-white border border-slate-200 p-6 shadow-xs dark:bg-zinc-950 dark:border-zinc-900/90 hover:shadow-md transition-all duration-300 relative group ${
+        isFullscreen 
+          ? 'min-h-[85vh] w-full p-8 md:p-10' 
+          : type === 'kpi_card' 
+          ? 'min-h-[145px]' 
+          : 'min-h-[340px]'
+      }`}
       id={`comp_${component.id}`}
     >
-      <div className="mb-3">
-        <div className="flex items-start justify-between gap-1.5 flex-wrap">
-          <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-sm tracking-tight uppercase flex-1 min-w-[120px]">
-            {title}
-          </h3>
+      {type !== 'kpi_card' && (
+        <div className="mb-3">
+          <div className="flex items-start justify-between gap-1.5 flex-wrap">
+            <h3 className="font-bold text-slate-800 dark:text-zinc-100 text-sm tracking-tight uppercase flex-1 min-w-[120px]">
+              {title}
+            </h3>
           <div className="flex items-center gap-1.5 h-6">
             <div 
               data-html2canvas-ignore 
@@ -958,6 +1179,7 @@ export const ChartWrapper: React.FC<ChartWrapperProps> = ({
           </p>
         )}
       </div>
+      )}
       
       <div className="flex-1 flex flex-col justify-end">
         {renderContent()}

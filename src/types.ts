@@ -6,6 +6,8 @@ export type DashboardComponentType =
   | 'pie_chart'
   | 'scatter_chart'
   | 'map_chart'
+  | 'heatmap'
+  | 'correlation_heatmap'
   | 'geo_map';
 
 export type FilterType = 'date_range' | 'category_select';

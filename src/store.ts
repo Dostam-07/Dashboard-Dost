@@ -2,7 +2,11 @@ import { create } from 'zustand';
 import { get, set as idbSet, del as idbDel, keys as idbKeys } from 'idb-keyval';
 import { MasterDashboardPayload, ChatMessage, SavedDashboardMeta } from './types';
 
+export interface AppActivity { id: string; text: string; time: string; }
+
 interface AppState {
+  activityLog: AppActivity[];
+  logActivity: (text: string) => void;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
@@ -16,6 +20,10 @@ interface AppState {
   // Dashboard states
   currentPayload: MasterDashboardPayload | null;
   setCurrentPayload: (payload: MasterDashboardPayload | null) => void;
+  
+  filterState: { dateRange?: { start: string; end: string }; selectedCategories: Record<string, string[]> };
+  setFilterState: (state: { dateRange?: { start: string; end: string }; selectedCategories: Record<string, string[]> }) => void;
+  resetFilters: () => void;
   
   isStreaming: boolean;
   setIsStreaming: (is: boolean) => void;
@@ -70,7 +78,16 @@ export const useAppStore = create<AppState>((setState, getState) => ({
     localStorage.setItem('luminate_component_settings', JSON.stringify(updated));
   },
 
-  theme: 'light',
+  theme: (() => {
+    try {
+      const stored = localStorage.getItem('luminate_theme');
+      if (stored === 'light' || stored === 'dark') {
+        return stored;
+      }
+    } catch (e) {}
+    // Default to dark to show off the ultra premium dashboard looks immediately
+    return 'dark';
+  })(),
   toggleTheme: () => {
     const nextTheme = getState().theme === 'light' ? 'dark' : 'light';
     getState().setTheme(nextTheme);
@@ -116,8 +133,45 @@ export const useAppStore = create<AppState>((setState, getState) => ({
       // Lazy init history
       getState().initHistoryForDashboard(currentPayload.dashboardId);
       localStorage.setItem('luminate_active_dashboard_id', currentPayload.dashboardId);
+      
+      // Load initial filterState if saved in localStorage
+      try {
+        const storedFilters = localStorage.getItem(`luminate_filters_for_${currentPayload.dashboardId}`);
+        if (storedFilters) {
+          setState({ filterState: JSON.parse(storedFilters) });
+        } else {
+          setState({ filterState: { selectedCategories: {} } });
+        }
+      } catch (e) {
+        setState({ filterState: { selectedCategories: {} } });
+      }
     } else {
       localStorage.removeItem('luminate_active_dashboard_id');
+      setState({ filterState: { selectedCategories: {} } });
+    }
+  },
+  
+  filterState: { selectedCategories: {} },
+  setFilterState: (filterState) => {
+    setState({ filterState });
+    const currentPayload = getState().currentPayload;
+    if (currentPayload) {
+      try {
+        localStorage.setItem(`luminate_filters_for_${currentPayload.dashboardId}`, JSON.stringify(filterState));
+      } catch (e) {
+        console.error("Failed to persist filterState to localStorage", e);
+      }
+    }
+  },
+  resetFilters: () => {
+    setState({ filterState: { selectedCategories: {} } });
+    const currentPayload = getState().currentPayload;
+    if (currentPayload) {
+      try {
+        localStorage.removeItem(`luminate_filters_for_${currentPayload.dashboardId}`);
+      } catch (e) {
+        console.error("Failed to remove filterState from localStorage", e);
+      }
     }
   },
   
@@ -173,12 +227,16 @@ export const useAppStore = create<AppState>((setState, getState) => ({
       }
       
       setState({ savedDashboards: currentMetaList });
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('dashboard-autosaved'));
       localStorage.setItem('luminate_saved_index', JSON.stringify(currentMetaList));
     } catch (e) {
       console.error("Error saving to IndexedDB / localStorage", e);
     }
   },
 
+  activityLog: [],
+  logActivity: (text) => setState((state) => ({ activityLog: [{ id: Date.now().toString(), text, time: new Date().toISOString() }, ...state.activityLog].slice(0, 50) })),
+  
   attachedData: null,
   setAttachedData: (data) => setState({ attachedData: data }),
   

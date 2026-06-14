@@ -2,26 +2,35 @@ import React, { useEffect } from 'react';
 import { SlidersHorizontal, Calendar, Tag, RotateCcw, Plus, Edit2, Trash2 } from 'lucide-react';
 import { MasterDashboardPayload, DashboardFilter } from '../types';
 import { ActiveFilterState, getDashboardDateRangeLimits, getDashboardCategoryOptions } from '../utils/filterEngine';
+import { useDashboardData } from './useDashboardData';
 
 interface FiltersPanelProps {
-  payload: MasterDashboardPayload;
-  filterState: ActiveFilterState;
-  onFilterStateChange: (state: ActiveFilterState) => void;
-  onResetFilters: () => void;
+  payload?: MasterDashboardPayload;
+  filterState?: ActiveFilterState;
+  onFilterStateChange?: (state: ActiveFilterState) => void;
+  onResetFilters?: () => void;
   onAddFilter?: () => void;
   onEditFilter?: (filter: DashboardFilter) => void;
   onDeleteFilter?: (id: string) => void;
 }
 
 export const FiltersPanel: React.FC<FiltersPanelProps> = ({
-  payload,
-  filterState,
-  onFilterStateChange,
-  onResetFilters,
+  payload: propPayload,
+  filterState: propFilterState,
+  onFilterStateChange: propOnFilterStateChange,
+  onResetFilters: propOnResetFilters,
   onAddFilter,
   onEditFilter,
   onDeleteFilter,
 }) => {
+  const { currentPayload, filterState: contextFilterState, setFilterState: contextSetFilterState, resetFilters: contextResetFilters } = useDashboardData();
+
+  const payload = propPayload || currentPayload;
+  const filterState = propFilterState || contextFilterState;
+  const onFilterStateChange = propOnFilterStateChange || contextSetFilterState;
+  const onResetFilters = propOnResetFilters || contextResetFilters;
+
+  if (!payload) return null;
   const { filters } = payload;
 
   // Initialize date range and category options on load

@@ -17,7 +17,7 @@ interface GeographyMapProps {
 }
 
 const geoUrlWorld = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-const geoUrlIndia = "https://raw.githubusercontent.com/deldersveld/topojson/master/countries/india/india-states.json";
+const geoUrlIndia = "https://raw.githubusercontent.com/Subhash9325/GeoJson-Data-of-Indian-States/master/Indian_States";
 
 export const GeographyMap: React.FC<GeographyMapProps> = ({ 
   data, 
@@ -295,7 +295,7 @@ export const GeographyMap: React.FC<GeographyMapProps> = ({
               <Geographies geography={geoData}>
                 {({ geographies }) =>
                   geographies.map((geo) => {
-                    const placeName = geo.properties.name || "";
+                    const placeName = geo.properties.name || geo.properties.NAME_1 || geo.properties.st_nm || "";
                     const normalizedPlacePrimary = normalizeToPrimaryName(placeName);
 
                     // Fuzzy matches with accurate dictionary normalization!

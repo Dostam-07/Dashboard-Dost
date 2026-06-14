@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { useAppStore, loadDashboardFromIDB } from './store';
 import { SavedDashboardsManager } from './components/SavedDashboardsManager';
+import { RecentActivityWidget } from './components/RecentActivityWidget';
+import { chaupalInsightsSeed, recentChaupalSessions } from './utils/seedData';
 import { parsePartialPayload } from './utils/jsonRepair';
 import { filterComponentData, ActiveFilterState } from './utils/filterEngine';
 import { normalizeGeoData } from './utils/dataNormalization';
@@ -53,7 +56,18 @@ import {
   Trash2,
   FileJson,
   Check,
-  Bot
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  Home,
+  SlidersHorizontal,
+  Lock,
+  Settings,
+  Users,
+  Bell,
+  HelpCircle,
+  MoreVertical,
+  Star
 } from 'lucide-react';
 import {
   DndContext,
@@ -74,6 +88,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion } from 'motion/react';
+import { HomeLandingView } from './components/HomeLandingView';
 
 interface SortableDashboardItemProps {
   id: string;
@@ -99,14 +114,54 @@ function SortableDashboardItem({ id, children }: SortableDashboardItemProps) {
 
   return (
     <div ref={setNodeRef} style={style} className="h-full relative group/draggable">
+      <div className="h-full w-full transition-transform duration-200 hover:scale-[1.02]">
+        <div 
+          {...attributes} 
+          {...listeners} 
+          data-html2canvas-ignore
+          className="absolute top-4 left-4 z-10 opacity-0 group-hover/draggable:opacity-100 transition-all p-1 bg-white/95 hover:bg-slate-50 dark:bg-zinc-900/95 dark:hover:bg-zinc-850 rounded border border-slate-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing text-slate-450 hover:text-indigo-650 shadow-sm"
+          title="Drag to reorder component"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+interface SortableSectionItemProps {
+  id: string;
+  children: React.ReactNode;
+}
+
+function SortableSectionItem({ id, children }: SortableSectionItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.35 : 1,
+    zIndex: isDragging ? 40 : 'auto',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="col-span-12 relative group/section-draggable">
       <div 
         {...attributes} 
         {...listeners} 
         data-html2canvas-ignore
-        className="absolute top-4 left-4 z-10 opacity-0 group-hover/draggable:opacity-100 transition-all p-1 bg-white/95 hover:bg-slate-50 dark:bg-zinc-900/95 dark:hover:bg-zinc-850 rounded border border-slate-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing text-slate-450 hover:text-indigo-650 shadow-sm"
-        title="Drag to reorder component"
+        className="absolute top-2 left-2 z-10 opacity-0 group-hover/section-draggable:opacity-100 transition-all p-1.5 bg-white/95 hover:bg-slate-50 dark:bg-zinc-900/95 dark:hover:bg-zinc-850 rounded border border-slate-200 dark:border-zinc-800 cursor-grab active:cursor-grabbing text-slate-450 hover:text-indigo-650 shadow-sm"
+        title="Drag to reorder section"
       >
-        <GripVertical className="h-3.5 w-3.5" />
+        <GripVertical className="h-4 w-4" />
       </div>
       {children}
     </div>
@@ -141,7 +196,7 @@ function SortableTabItem({ id, activeTab, onClick, onDuplicate }: SortableTabIte
   const [showMenu, setShowMenu] = useState(false);
 
   return (
-    <div ref={setNodeRef} style={style} className="relative group/tab flex items-center pr-1 pl-1">
+    <div ref={setNodeRef} style={style} className="relative group/tab flex items-center pr-1 pl-1 min-w-0">
       <button
         {...attributes}
         {...listeners}
@@ -173,7 +228,7 @@ function SortableTabItem({ id, activeTab, onClick, onDuplicate }: SortableTabIte
                 setShowMenu(false);
                 onDuplicate(id);
               }}
-              className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+              className="w-full text-left px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center gap-2 min-w-0"
             >
               <Plus className="h-3.5 w-3.5" /> Duplicate
             </button>
@@ -213,6 +268,7 @@ export default function App() {
     setChats,
     clearChats,
     currentPayload,
+    logActivity,
     setCurrentPayload,
     isStreaming,
     setIsStreaming,
@@ -242,6 +298,56 @@ export default function App() {
   const [filterState, setFilterState] = useState<ActiveFilterState>({
     selectedCategories: {}
   });
+  
+  // UI Layout States
+  const [collapsedSectionIds, setCollapsedSectionIds] = useState<string[]>([]);
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(() => localStorage.getItem('isLeftSidebarCollapsed') === 'true');
+  const [isQAPanelCollapsed, setIsQAPanelCollapsed] = useState(() => localStorage.getItem('isQAPanelCollapsed') === 'true');
+  const [isCanvasLoading, setIsCanvasLoading] = useState(false); 
+
+  useEffect(() => {
+    localStorage.setItem('isLeftSidebarCollapsed', String(isLeftSidebarCollapsed));
+  }, [isLeftSidebarCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('isQAPanelCollapsed', String(isQAPanelCollapsed));
+  }, [isQAPanelCollapsed]);
+  
+  const resetWorkspaceLayout = () => {
+    setIsLeftSidebarCollapsed(false);
+    setIsQAPanelCollapsed(false);
+    showNotification("Workspace layout reset to default.", "success");
+    logActivity("Workspace layout reset.");
+  };
+  
+  // Custom Dashboard-Dost v2.0 Workspace states
+  const [activeSidebarMenu, setActiveSidebarMenu] = useState<'home' | 'dashboards' | 'datasets' | 'explorer' | 'reports' | 'settings'>('home');
+  const [isStarred, setIsStarred] = useState(false);
+  
+  // Skeleton loader component
+  const DashboardSkeleton = () => (
+    <div className="space-y-4 p-6 animate-pulse">
+      <div className="h-8 bg-slate-200 dark:bg-zinc-800 rounded w-1/3"></div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[1, 2, 3].map(i => <div key={i} className="h-32 bg-slate-200 dark:bg-zinc-800 rounded-lg"></div>)}
+      </div>
+      <div className="h-64 bg-slate-200 dark:bg-zinc-800 rounded-lg"></div>
+    </div>
+  );
+  
+  // Right Sidebar Accordion Panel Collapsibles
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
+  const [isInsightsExpanded, setIsInsightsExpanded] = useState(false);
+  const [isDataExplorerExpanded, setIsDataExplorerExpanded] = useState(false);
+  const [isChatHistoryExpanded, setIsChatHistoryExpanded] = useState(false);
+  const [isDashboardHistoryExpanded, setIsDashboardHistoryExpanded] = useState(false);
+
+  // Reconciliation Key based on filterState and currentPayload to bypass React reconciliation bottlenecks
+  const reconciliationKey = useMemo(() => {
+    const filterSummary = JSON.stringify(filterState || {});
+    const payloadId = currentPayload?.dashboardId || 'none';
+    return `${payloadId}_${filterSummary}`;
+  }, [filterState, currentPayload]);
 
   const lastLoadedDashId = useRef<string | null>(null);
 
@@ -554,9 +660,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         // Push initial state
         await pushState(updatedPayload);
         showNotification("Template applied successfully as a new layout configuration.", "success");
+    logActivity(String("Template applied successfully as a new layout configuration."));
         setIsTemplateGalleryOpen(false);
       } catch (err: any) {
         showNotification(`Failed to load template payload: ${err.message}`, "refuse");
+    logActivity(String(`Failed to load template payload: ${err.message}`));
       }
     }
   };
@@ -650,10 +758,12 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       components: nextComponents
     };
     setCurrentPayload(nextPayload);
     showNotification("Refreshed components data with latest stream metrics!", "success");
+    logActivity(String("Refreshed components data with latest stream metrics!"));
   };
 
   // AI Insights Client Fetcher
@@ -712,11 +822,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       return { ...comp, layout: nextLayout };
     });
     
-    const nextPayload = { ...currentPayload, components: updatedComponents };
+    const nextPayload = { ...currentPayload,
+    logActivity, components: updatedComponents };
     setCurrentPayload(nextPayload);
     pushState(nextPayload);
     saveAddons(sections, presetId);
     showNotification(`Applied preset layout: ${presetId === 'preset_bento' ? 'Bento Grid' : presetId === 'preset_kpi' ? 'KPI Focus' : 'Analytical Expanded'}!`, "success");
+    logActivity(String(`Applied preset layout: ${presetId === 'preset_bento' ? 'Bento Grid' : presetId === 'preset_kpi' ? 'KPI Focus' : 'Analytical Expanded'}!`));
   };
 
   // Section managers
@@ -753,6 +865,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     setSections(nextSections);
     saveAddons(nextSections);
     showNotification("Visual container section disbanded.", "success");
+    logActivity(String("Visual container section disbanded."));
   };
 
   // DND Sensors definition
@@ -779,11 +892,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     const newTabOrder = arrayMove(orderedTabs, oldIndex, newIndex);
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       tabOrder: newTabOrder
     };
 
     await pushState(nextPayload);
     showNotification("Tab reordered", "success");
+    logActivity(String("Tab reordered"));
   };
 
   const handleDuplicateTab = async (tabName: string) => {
@@ -813,6 +928,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       components: newComponents,
       tabOrder: newTabOrder
     };
@@ -820,12 +936,31 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     await pushState(nextPayload);
     setActiveTab(newTabName);
     showNotification(`Duplicated tab '${tabName}' to '${newTabName}'`);
+    logActivity(String(`Duplicated tab '${tabName}' to '${newTabName}'`));
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
+    // Handle section reordering
+    if (String(active.id).startsWith('section-') && String(over.id).startsWith('section-')) {
+      const activeSecId = String(active.id).replace('section-', '');
+      const overSecId = String(over.id).replace('section-', '');
+      
+      const oldIndex = sections.findIndex(s => s.id === activeSecId);
+      const newIndex = sections.findIndex(s => s.id === overSecId);
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const nextSections = arrayMove(sections, oldIndex, newIndex);
+        setSections(nextSections);
+        showNotification("Visual Section reordered!", "success");
+    logActivity(String("Visual Section reordered!"));
+      }
+      return;
+    }
+
+    // Handle component reordering
     const oldIndex = componentsToRender.findIndex((c) => c.id === active.id);
     const newIndex = componentsToRender.findIndex((c) => c.id === over.id);
 
@@ -849,6 +984,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       components: resultComponents,
     };
 
@@ -891,11 +1027,14 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     if (storedTheme) {
       setTheme(storedTheme);
     } else {
-      setTheme('light');
+      setTheme('dark');
     }
 
     // Load saved list
     loadSavedDashboardsList();
+
+    const onAutosave = () => showNotification("Workspace auto-saved locally.", "success");
+    window.addEventListener('dashboard-autosaved', onAutosave);
 
     // Check for deep links in search parameters
     const params = new URLSearchParams(window.location.search);
@@ -926,6 +1065,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           
           processedDeepLink = true;
           showNotification(`Imported shared workspace: "${parsedPayload.title}"`, "success");
+    logActivity(String(`Imported shared workspace: "${parsedPayload.title}"`));
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       } catch (err) {
@@ -944,6 +1084,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
             } catch (fe) {}
           }
           showNotification(`Loaded shared workspace: "${payload.title}"`, "success");
+    logActivity(String(`Loaded shared workspace: "${payload.title}"`));
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       }).catch((err) => {
@@ -960,12 +1101,20 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           if (payload) {
             setCurrentPayload(payload);
             showNotification(`Restored active session: "${payload.title}"`);
+    logActivity(String(`Restored active session: "${payload.title}"`));
+          } else {
+            setCurrentPayload(chaupalInsightsSeed);
           }
         }).catch((err) => {
           console.warn("Could not restore active dashboard session from IndexedDB", err);
+          setCurrentPayload(chaupalInsightsSeed);
         });
+      } else {
+        setCurrentPayload(chaupalInsightsSeed);
       }
     }
+
+    return () => window.removeEventListener('dashboard-autosaved', onAutosave);
   }, [setTheme, setChats, loadSavedDashboardsList, setCurrentPayload]);
 
   // Attach keyboard shortcuts for Z & Y history manipulation
@@ -982,6 +1131,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         if (canUndo) {
           undo();
           showNotification("Undid layout change.");
+    logActivity(String("Undid layout change."));
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
@@ -989,6 +1139,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         if (canRedo) {
           redo();
           showNotification("Redid layout change.");
+    logActivity(String("Redid layout change."));
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -996,6 +1147,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         if (canRedo) {
           redo();
           showNotification("Redid layout change.");
+    logActivity(String("Redid layout change."));
         }
       }
     };
@@ -1030,6 +1182,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         setCurrentPayload(newPayload);
         pushState(newPayload);
         showNotification(`Ingested dashboard from ${parsedUrl.hostname}`, "success");
+    logActivity(String(`Ingested dashboard from ${parsedUrl.hostname}`));
         setMobileTab('dashboard');
         
         // Add greeting chat
@@ -1055,6 +1208,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
   const handleShareWorkspace = () => {
     if (!currentPayload) {
       showNotification("No active workspace to share.", "refuse");
+    logActivity(String("No active workspace to share."));
       return;
     }
 
@@ -1077,13 +1231,16 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       // Attempt automated clipboard save
       navigator.clipboard.writeText(shareUrl).then(() => {
         showNotification("Shareable deep-link copied to clipboard!", "success");
+    logActivity(String("Shareable deep-link copied to clipboard!"));
       }).catch((err) => {
         console.warn("Secure Clipboard writing blocked:", err);
         showNotification("Generated share URL successfully!");
+    logActivity(String("Generated share URL successfully!"));
       });
     } catch (e: any) {
       console.error(e);
       showNotification("Could not compile share specifications.", "refuse");
+    logActivity(String("Could not compile share specifications."));
     }
   };
 
@@ -1105,6 +1262,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     setCurrentPayload(newPayload);
     await pushState(newPayload);
     showNotification("Start building! Tell the SaaS chatbot on the right what you want to add.");
+    logActivity(String("Start building! Tell the SaaS chatbot on the right what you want to add."));
     setMobileTab('dashboard');
   };
 
@@ -1113,9 +1271,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     if (payload) {
       setCurrentPayload(payload);
       showNotification(`Restored workspace "${payload.title}"!`);
+    logActivity(String(`Restored workspace "${payload.title}"!`));
       setMobileTab('dashboard');
     } else {
       showNotification("Failed to restore dashboard session", "refuse");
+    logActivity(String("Failed to restore dashboard session"));
     }
   };
 
@@ -1139,6 +1299,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       components: updatedComponents
     };
 
@@ -1146,6 +1307,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     setIsComponentModalOpen(false);
     setEditingComponent(null);
     showNotification(`Component "${component.title}" saved successfully!`);
+    logActivity(String(`Component "${component.title}" saved successfully!`));
   };
 
   const handleDeleteComponent = async (componentId: string) => {
@@ -1156,11 +1318,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       components: updatedComponents
     };
 
     await pushState(nextPayload);
     showNotification(`Removed component "${targetComp?.title || 'Chart'}".`);
+    logActivity(String(`Removed component "${targetComp?.title || 'Chart'}".`));
   };
 
   // filter editing actions
@@ -1176,6 +1340,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       filters: updatedFilters
     };
 
@@ -1183,6 +1348,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
     setIsFilterModalOpen(false);
     setEditingFilter(null);
     showNotification(`Filter "${filter.label}" created successfully.`);
+    logActivity(String(`Filter "${filter.label}" created successfully.`));
   };
 
   const handleDeleteFilter = async (filterId: string) => {
@@ -1193,11 +1359,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
     const nextPayload = {
       ...currentPayload,
+    logActivity,
       filters: updatedFilters
     };
 
     await pushState(nextPayload);
     showNotification(`Removed filter logic "${targetFilter?.label || 'Condition'}".`);
+    logActivity(String(`Removed filter logic "${targetFilter?.label || 'Condition'}".`));
   };
 
   // Export current configuration config to JSON file
@@ -1213,8 +1381,10 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       downloadAnchor.click();
       downloadAnchor.remove();
       showNotification("JSON Schema configuration exported.");
+    logActivity(String("JSON Schema configuration exported."));
     } catch (e: any) {
       showNotification("Failed to export JSON.", "refuse");
+    logActivity(String("Failed to export JSON."));
     }
   };
 
@@ -1240,8 +1410,10 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           await pushState(validated);
           handleResetFilters();
           showNotification(`Success: Recreated board "${validated.title}"!`);
+    logActivity(String(`Success: Recreated board "${validated.title}"!`));
         } catch (err: any) {
           showNotification(`Restore failed: ${err.message || "Invalid payload"}`, "refuse");
+    logActivity(String(`Restore failed: ${err.message || "Invalid payload"}`));
         }
       };
       reader.readAsText(file);
@@ -1250,6 +1422,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
     try {
       showNotification(`Processing attached data: ${file.name}...`);
+    logActivity(String(`Processing attached data: ${file.name}...`));
       let extractedContent = "";
 
       if (isCSV) {
@@ -1289,12 +1462,14 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         content: extractedContent
       });
       showNotification(`File attached successfully. Ask a question or generate a dashboard to use it.`);
+    logActivity(String(`File attached successfully. Ask a question or generate a dashboard to use it.`));
       if (promptInput === '') {
         setPromptInput(`Generate a dashboard analyzing ${file.name}`);
       }
     } catch (err: any) {
       console.error(err);
       showNotification(`Failed to load data: ${err.message}`, "refuse");
+    logActivity(String(`Failed to load data: ${err.message}`));
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (e.target) e.target.value = '';
@@ -1304,11 +1479,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
   const handleDownloadPDF = async () => {
     if (!dashboardRef.current) {
       showNotification("No workspace active to export to PDF.", "refuse");
+    logActivity(String("No workspace active to export to PDF."));
       return;
     }
 
     try {
       showNotification("Generating PDF report...");
+    logActivity(String("Generating PDF report..."));
       
       const element = dashboardRef.current;
       const canvas = await html2canvas(element, {
@@ -1345,9 +1522,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       
       pdf.save(`Dost_Report_${new Date().toISOString().split('T')[0]}.pdf`);
       showNotification("PDF report downloaded successfully!", "success");
+    logActivity(String("PDF report downloaded successfully!"));
     } catch (err) {
       console.error(err);
       showNotification("Failed to generate PDF.", "refuse");
+    logActivity(String("Failed to generate PDF."));
     }
   };
 
@@ -1355,11 +1534,13 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
   const handleDownloadScreenshot = async () => {
     if (!dashboardRef.current) {
       showNotification("No workspace active to screenshot.", "refuse");
+    logActivity(String("No workspace active to screenshot."));
       return;
     }
 
     try {
       showNotification("Capturing high-fidelity dashboard png...");
+    logActivity(String("Capturing high-fidelity dashboard png..."));
       
       const element = dashboardRef.current;
       
@@ -1381,9 +1562,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
       document.body.removeChild(link);
       
       showNotification("Dashboard screenshot downloaded successfully!");
+    logActivity(String("Dashboard screenshot downloaded successfully!"));
     } catch (err: any) {
       console.error("Screenshot rendering failed:", err);
       showNotification(`Capture failed: ${err.message || "Canvas error"}`, "refuse");
+    logActivity(String(`Capture failed: ${err.message || "Canvas error"}`));
     }
   };
 
@@ -1570,6 +1753,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         setCurrentPayload(newPayload);
         pushState(newPayload);
         showNotification(`Ingested dashboard from ${parsedUrl.hostname}`, "success");
+    logActivity(String(`Ingested dashboard from ${parsedUrl.hostname}`));
         setMobileTab('dashboard');
         
         // Add greeting chat
@@ -1707,43 +1891,47 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
   }) || [];
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-50 transition-colors duration-300 flex flex-col antialiased">
+    <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-50 transition-colors duration-300 flex flex-col antialiased min-w-0">
       
       {/* PERSISTENT APP HEADER BAR */}
-      <header className="sticky top-0 z-30 w-full shrink-0 border-b border-slate-200 bg-white/95 dark:border-zinc-900/90 dark:bg-zinc-950/95 shadow-xs backdrop-blur-md">
-        <div className="flex h-16 items-center justify-between px-6 sm:px-8">
-          <div className="flex items-center gap-4">
-            {/* Mockup concentric circle nested logo */}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-600 dark:bg-violet-600 shadow-md transform hover:rotate-12 transition-transform duration-300 cursor-pointer">
-              <div className="relative flex items-center justify-center h-5 w-5 rounded-full border-2 border-white/90">
+      <header className="sticky top-0 z-40 w-full shrink-0 border-b border-slate-205 bg-white/95 dark:border-zinc-900/90 dark:bg-zinc-950/95 shadow-xs backdrop-blur-md">
+        <div className="flex h-16 items-center justify-between px-6 sm:px-8 min-w-0">
+          <div className="flex items-center gap-4 min-w-0">
+            {/* Logo container brand segment */}
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-md transform hover:scale-105 transition-all duration-300 cursor-pointer min-w-0">
+              <div className="relative flex items-center justify-center h-5 w-5 rounded-full border-2 border-white/90 min-w-0">
                 <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
               </div>
             </div>
             
-            <div className="flex items-center">
-              <span className="font-extrabold text-lg sm:text-xl tracking-tight text-slate-900 dark:text-white font-sans">
-                Dash-Dost
+            <div className="flex items-center min-w-0">
+              <span className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 dark:text-white font-sans">
+                Chaupal-Insights
               </span>
-              <div className="h-4 w-px bg-slate-200 dark:bg-zinc-850 mx-3.5"></div>
-              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-[#64748b] dark:text-[#475569] font-mono">
-                Builder Studio
+              <div className="h-4 w-px bg-slate-200 dark:bg-zinc-850 mx-3"></div>
+              <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 font-mono flex items-center gap-1.5 min-w-0">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block animate-ping" /> Live Console
               </span>
             </div>
           </div>
 
           {/* GLOBAL DASHBOARD SEARCH */}
-          <div className="hidden md:flex flex-1 max-w-lg mx-8 relative">
+          <div className="hidden md:flex flex-1 max-w-lg mx-8 relative min-w-0">
             <div className="relative w-full">
-              <Search className="absolute left-4.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-zinc-500 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search dashboards by title or Prompt keywords..."
+                placeholder="Search dashboards, datasets, metrics... (⌘K)"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 255)}
-                className="w-full pl-11 pr-5 py-2 text-xs bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-600/30 dark:bg-zinc-900/50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900/80 transition-all font-sans placeholder-slate-400 dark:placeholder-zinc-650"
+                className="w-full pl-10 pr-12 py-2 text-xs bg-slate-50 border border-slate-205 hover:bg-slate-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-600/20 dark:bg-zinc-900/50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-900/80 transition-all font-sans placeholder-slate-400 dark:placeholder-zinc-650"
               />
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none select-none px-1.5 py-0.5 rounded border border-slate-200 bg-white text-[9px] font-bold text-slate-400 font-sans shadow-xs dark:bg-zinc-950 dark:border-zinc-800">
+                ⌘K
+              </div>
+
               {/* Dropdown Results Box */}
               {isSearchFocused && searchTerm.trim() && (
                 <div className="absolute top-11 left-0 right-0 z-50 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto custom-scrollbar animate-fade-in">
@@ -1762,7 +1950,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                           handleLoadDashboardMeta(dash);
                           setSearchTerm('');
                         }}
-                        className="w-full text-left px-2.5 py-2 hover:bg-indigo-50/55 dark:hover:bg-indigo-950/20 rounded-lg transition-all flex flex-col gap-0.5 cursor-pointer select-none group"
+                        className="w-full text-left px-2.5 py-2 hover:bg-indigo-50/55 dark:hover:bg-indigo-950/20 rounded-lg transition-all flex flex-col gap-0.5 cursor-pointer select-none group min-w-0"
                       >
                         <span className="text-xs font-bold text-slate-800 dark:text-zinc-150 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 font-sans truncate">
                           {dash.title || "Untitled"}
@@ -1770,11 +1958,6 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                         {dash.subtitle && (
                           <span className="text-[10px] text-slate-400 dark:text-zinc-500 truncate">
                             {dash.subtitle}
-                          </span>
-                        )}
-                        {dash.prompt && (
-                          <span className="text-[9px] text-slate-400 dark:text-zinc-500 font-mono truncate mt-0.5 opacity-80">
-                            Keyphrase: {dash.prompt}
                           </span>
                         )}
                       </button>
@@ -1785,9 +1968,9 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {isStreaming && (
-              <div className="flex items-center gap-1.5 bg-green-50 text-green-700 dark:bg-zinc-900 dark:text-green-400 px-3 py-1 rounded-full text-xs font-medium border border-green-100 dark:border-zinc-800/80">
+              <div className="flex items-center gap-1.5 bg-green-50 text-green-700 dark:bg-zinc-900/40 dark:text-green-400 px-3 py-1 rounded-full text-xs font-medium border border-green-105 dark:border-zinc-800/80 min-w-0">
                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse mr-1"></div>
                 <span>Streaming Ready</span>
               </div>
@@ -1796,33 +1979,92 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
             {/* Share button */}
             <button
               onClick={handleShareWorkspace}
-              className="relative p-2 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 text-slate-500 hover:text-indigo-600 dark:border-zinc-800 dark:hover:border-indigo-900/40 dark:hover:bg-indigo-950/20 dark:text-zinc-400 dark:hover:text-indigo-400 transition-all cursor-pointer inline-flex items-center justify-center h-9 w-9"
+              className="relative p-2 rounded-lg border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/10 text-slate-500 hover:text-indigo-600 dark:border-zinc-800 dark:hover:border-indigo-900/40 dark:hover:bg-indigo-950/20 dark:text-zinc-400 dark:hover:text-indigo-400 transition-all cursor-pointer inline-flex items-center justify-center h-9 w-9 min-w-0"
               title="Share current dashboard deep-link"
             >
               <Share2 className="h-4.5 w-4.5" />
               {currentPayload && (
-                <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                <span className="absolute top-1.5 right-1.5 flex h-2 w-2 min-w-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 min-w-0"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 min-w-0"></span>
                 </span>
               )}
+            </button>
+
+            {/* Notification Bell with Badge */}
+            <div className="relative">
+              <button
+                className="relative p-2 rounded-lg border border-slate-200 hover:border-slate-350 hover:bg-slate-50 text-slate-500 hover:text-slate-850 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-all cursor-pointer inline-flex items-center justify-center h-9 w-9 min-w-0"
+                title="Notifications"
+              >
+                <Bell className="h-4.5 w-4.5" />
+                <span className="absolute -top-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-violet-650 text-[9px] font-black text-white hover:scale-110 transition-transform min-w-0">
+                  3
+                </span>
+              </button>
+            </div>
+
+            {/* Help / FAQ Question Info */}
+            <button
+              className="p-2 rounded-lg border border-slate-200 hover:border-slate-350 hover:bg-slate-50 text-slate-500 hover:text-slate-850 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-all cursor-pointer inline-flex items-center justify-center h-9 w-9 min-w-0"
+              title="Help & Documentation"
+            >
+              <HelpCircle className="h-4.5 w-4.5" />
+            </button>
+
+            {/* Toggle Buttons for Panels */}
+            <button
+                onClick={resetWorkspaceLayout}
+                className="p-2 rounded-lg border border-slate-200 dark:border-zinc-800 text-slate-400 hover:text-indigo-600 dark:text-zinc-550 dark:hover:text-indigo-400 transition-all h-9 flex items-center justify-center cursor-pointer px-3 text-xs font-bold gap-2 min-w-0"
+                title="Reset Workspace Layout"
+            >
+                <RefreshCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">Reset</span>
+            </button>
+            <button
+                onClick={() => setIsLeftSidebarCollapsed(prev => !prev)}
+                className="p-2 rounded-lg border border-slate-200 dark:border-zinc-800 text-slate-400 hover:text-slate-900 dark:text-zinc-550 dark:hover:text-zinc-100 transition-all h-9 w-9 flex items-center justify-center cursor-pointer min-w-0"
+                title="Toggle Left Sidebar"
+            >
+              <ListRestart className="h-4.5 w-4.5" />
+            </button>
+            <button
+                onClick={() => setIsQAPanelCollapsed(prev => !prev)}
+                className="p-2 rounded-lg border border-slate-200 dark:border-zinc-800 text-slate-400 hover:text-slate-900 dark:text-zinc-550 dark:hover:text-zinc-100 transition-all h-9 w-9 flex items-center justify-center cursor-pointer min-w-0"
+                title="Toggle Q&A Panel"
+            >
+              <MessageSquare className="h-4.5 w-4.5" />
             </button>
 
             {/* Theme switcher toggle */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-all cursor-pointer inline-flex items-center justify-center h-9 w-9"
+              className="p-2 rounded-lg border border-slate-205 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 dark:border-zinc-805 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-all cursor-pointer inline-flex items-center justify-center h-9 w-9 min-w-0"
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {theme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
             </button>
+
+            <div className="h-7 w-px bg-slate-200 dark:bg-zinc-800/80 mx-1"></div>
+
+            {/* USER PROFILE AVATAR BLOCK */}
+            <div className="flex items-center gap-2.5 pl-1 shrink-0 select-none min-w-0">
+              <div className="flex h-8.5 w-8.5 items-center justify-center rounded-full bg-violet-605 text-white text-xs font-black ring-2 ring-violet-500/20 font-sans shadow-sm min-w-0">
+                AV
+              </div>
+              <div className="hidden lg:flex flex-col text-left min-w-0">
+                <span className="text-xs font-bold text-slate-800 dark:text-zinc-105 leading-tight">Amit Verma</span>
+                <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-550 font-mono tracking-wide">Administrator</span>
+              </div>
+            </div>
+
           </div>
         </div>
       </header>
 
       {/* DYNAMIC PUSH NOTIFICATION BANNER */}
       {notify && (
-        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl border bg-white dark:bg-zinc-900 shadow-2xl transition-all duration-300 ease-out border-slate-250 animate-bounce">
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl border bg-white dark:bg-zinc-900 shadow-2xl transition-all duration-300 ease-out border-slate-250 animate-bounce min-w-0">
           {notify.type === 'success' ? (
             <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
           ) : (
@@ -1840,64 +2082,190 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
         </div>
       )}
 
-      {/* CORE WORKSPACE GRID */}
-      <div className="flex-1 w-full grid grid-cols-1 lg:grid-cols-12 min-h-0 relative">
+      {/* CORE WORKSPACE PORTION */}
+      <PanelGroup orientation="horizontal" className="flex-1 w-full h-full relative min-h-0 min-w-0">
         
-        {/* PANEL A: LEFT SIDEBAR - HISTORY & NEW DASHBOARD */}
-        <div className={`col-span-12 lg:col-span-3 lg:border-r border-slate-200 dark:border-zinc-900 bg-slate-50/70 dark:bg-[#0d0d11]/80 p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar shrink-0 ${mobileTab === 'history' ? 'block' : 'hidden lg:block'}`}>
-          <div className="mb-4 space-y-3">
-            <button
-              onClick={handleNewDashboard}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-700 transition-all font-sans cursor-pointer shadow-md inline-flex items-center justify-center group"
-              title="Start a fresh blank dashboard session"
-            >
-              <Plus className="h-4 w-4 transition-transform group-hover:rotate-90" />
-              <span>+ New Dashboard</span>
-            </button>
-          </div>
-          
-          {/* Quick Universal Ingestion entry point on left side of the project */}
-          <div className="mb-4 p-4 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/20 space-y-3 shadow-xs">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-violet-500 animate-pulse shrink-0" />
-              <span className="text-xs font-bold text-slate-700 dark:text-zinc-300 font-sans tracking-wide">
-                Ingest & Build Studio
-              </span>
+        {/* PANEL A: LEFT SIDEBAR - PREMIUM NAVIGATION */}
+        {!isLeftSidebarCollapsed && (
+          <Panel id="left-sidebar" collapsible={true} defaultSize={15} maxSize={30} minSize={15} className="h-full border-r border-slate-200 dark:border-zinc-900 bg-white dark:bg-[#0d0f17] flex flex-col z-30">
+             <div className="p-4 lg:p-5 overflow-y-auto h-full flex flex-col justify-start custom-scrollbar z-30 min-w-0">
+              {/* Logo container brand segment */}
+              <div className="flex items-center justify-between pb-3.5 mb-5 border-b border-slate-100 dark:border-zinc-800/60 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-indigo-600 shadow-md min-w-0">
+                    <div className="relative flex items-center justify-center h-5 w-5 rounded-full border border-white/90 min-w-0">
+                      <div className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-extrabold text-[13.5px] tracking-tight text-slate-900 dark:text-white font-sans">
+                        Dashboard-Dost
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase text-white bg-violet-600">v2.0</span>
+                    </div>
+                    <span className="text-[9px] text-slate-400 dark:text-zinc-550 font-medium tracking-wide block">
+                      AI-Powered Analytics Platform
+                    </span>
+                  </div>
+                </div>
+                <button onClick={() => setIsLeftSidebarCollapsed(true)} className="lg:hidden p-1.5 hover:bg-slate-105 dark:hover:bg-zinc-800 rounded-lg text-slate-400">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* New Dashboard primary action CTA */}
+              <div className="mb-6">
+                <button
+                  onClick={handleNewDashboard}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider text-white bg-violet-600 hover:bg-violet-700 bg-gradient-to-r from-violet-600 to-indigo-650 hover:from-violet-700 hover:to-indigo-700 transition-all font-sans cursor-pointer shadow-md inline-flex items-center justify-center group min-w-0"
+                  title="Start a fresh blank dashboard session"
+                >
+                  <Plus className="h-3.5 w-3.5 transition-transform group-hover:rotate-90" />
+                  <span>+ New Dashboard</span>
+                </button>
+              </div>
+
+              {/* SaaS Navigation groups */}
+              <div className="space-y-6 flex-1 min-w-0">
+                {[
+                  {
+                    title: "WORKSPACE",
+                    items: [
+                      { id: 'home', label: 'Home', icon: Home },
+                      { id: 'dashboards', label: 'Dashboards', icon: Grid2X2, badge: savedDashboards.length > 0 ? String(savedDashboards.length) : undefined },
+                      { id: 'datasets', label: 'Datasets', icon: Database },
+                      { id: 'explorer', label: 'Data Explorer', icon: Compass },
+                      { id: 'templates', label: 'Templates', icon: LayoutTemplate, action: () => setIsTemplateGalleryOpen(true) },
+                      { id: 'reports', label: 'Reports', icon: SlidersHorizontal },
+                      { id: 'alerts', label: 'Alerts', icon: Bell },
+                    ]
+                  },
+                  {
+                    title: "AI ANALYTICS",
+                    items: [
+                      { id: 'assistant', label: 'AI Assistant', icon: Bot, badge: 'New', action: () => { setMobileTab('chat'); if (isQAPanelCollapsed) setIsQAPanelCollapsed(false); } },
+                      { id: 'insights', label: 'Smart Insights', icon: Sparkles, action: fetchAIInsights },
+                    ]
+                  },
+                  {
+                    title: "MANAGE",
+                    items: [
+                      { id: 'users', label: 'Users & Teams', icon: Users },
+                      { id: 'settings', label: 'Settings', icon: Settings },
+                    ]
+                  }
+                ].map((group) => (
+                  <div key={group.title} className="space-y-1.5">
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-widest font-mono block px-2.5">
+                      {group.title}
+                    </span>
+                    <div className="space-y-0.5">
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = activeSidebarMenu === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => {
+                              setActiveSidebarMenu(item.id as any);
+                              if (item.action) item.action();
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold rounded-xl transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-indigo-50 text-indigo-705 dark:bg-zinc-900 dark:text-indigo-400 font-bold'
+                                : 'text-slate-655 hover:text-slate-900 hover:bg-slate-50 dark:text-zinc-400 dark:hover:text-zinc-250 dark:hover:bg-zinc-900/40'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5 min-w-0">
+                              <Icon className={`h-4 w-4 shrink-0 transition-transform ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400'}`} />
+                              <span>{item.label}</span>
+                            </span>
+                            {item.badge && (
+                              <span className="px-1.5 py-0.5 text-[8px] font-black uppercase rounded bg-indigo-100 text-indigo-805 dark:bg-indigo-950 dark:text-indigo-400 border border-indigo-200/30 font-sans tracking-wider">
+                                {item.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Quick Saved Dashboard Ingestion on left side */}
+                <div className="pt-4 border-t border-slate-100 dark:border-zinc-800/40">
+                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 tracking-widest font-mono block px-2.5 mb-2">
+                    ACTIVE WORKSPACE LIST
+                  </span>
+                  <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                    <SavedDashboardsManager onLoadDashboard={handleLoadDashboardMeta} />
+                  </div>
+                </div>
+
+                <RecentActivityWidget />
+              </div>
+
+              {/* Quick Universal Ingestion form inside left side */}
+              <div className="mt-6 mb-4 p-3.5 rounded-xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5 space-y-2.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Sparkles className="h-3.5 w-3.5 text-indigo-500 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 font-sans uppercase tracking-wider">
+                    Ingest & Build Studio
+                  </span>
+                </div>
+                
+                <form onSubmit={handleLeftSidebarSubmit} className="space-y-1.5">
+                  <input
+                    type="text"
+                    placeholder="Paste Metabase/Tableau URL..."
+                    value={leftSidebarInput}
+                    onChange={(e) => setLeftSidebarInput(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-[11px] bg-white border border-slate-250 outline-none rounded-lg focus:ring-2 focus:ring-indigo-600/10 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!leftSidebarInput.trim() || isStreaming}
+                    className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-705 text-[10px] font-bold uppercase tracking-wider font-mono rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 min-w-0"
+                  >
+                    <span>Compile & Render</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* STORAGE METRIC CAPSULE */}
+              <div className="mt-2 p-3.5 rounded-xl bg-slate-50 border border-slate-205 dark:bg-zinc-900/30 dark:border-zinc-850 space-y-2">
+                <div className="flex items-center justify-between min-w-0">
+                  <span className="text-[9px] font-bold text-slate-405 dark:text-zinc-550 uppercase tracking-widest font-mono">Workspace Storage</span>
+                  <span className="text-[9px] font-bold text-slate-705 dark:text-zinc-305 font-mono">6.5 GB / 10 GB</span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-full w-[65%] bg-indigo-600 dark:bg-indigo-500 rounded-full animate-pulse" />
+                </div>
+              </div>
             </div>
-            
-            <form onSubmit={handleLeftSidebarSubmit} className="space-y-2">
-              <input
-                type="text"
-                placeholder="Paste Dashboard URL or type Prompt..."
-                value={leftSidebarInput}
-                onChange={(e) => setLeftSidebarInput(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 outline-none rounded-lg focus:ring-2 focus:ring-violet-600/20 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650"
-              />
-              <button
-                type="submit"
-                disabled={!leftSidebarInput.trim() || isStreaming}
-                className="w-full py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 text-[10px] font-bold uppercase tracking-wider font-mono rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
-              >
-                <span>Compile & Render</span>
-              </button>
-            </form>
-          </div>
-          
-          <div className="flex-1">
-            <SavedDashboardsManager onLoadDashboard={handleLoadDashboardMeta} />
-          </div>
-        </div>
+          </Panel>
+        )}
+        
+        {!isLeftSidebarCollapsed && (
+          <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
+        )}
 
         {/* PANEL B: MIDDLE DISPLAY CANVAS - CORE DASHBOARD VIEWPORT */}
-        <main className={`col-span-12 lg:col-span-5 xl:col-span-6 p-4 sm:p-5 md:p-6 flex flex-col justify-start overflow-y-auto h-full custom-scrollbar bg-white dark:bg-[#0c0c11]/25 border-r border-slate-200 dark:border-zinc-900 ${mobileTab === 'dashboard' ? 'block' : 'hidden lg:block'}`}>
+        <Panel id="main-content" className="flex flex-col min-w-0" defaultSize={isLeftSidebarCollapsed && isQAPanelCollapsed ? 100 : 55}>
+          <main className="p-4 sm:p-5 md:p-6 flex flex-col justify-start overflow-y-auto h-full custom-scrollbar bg-white dark:bg-[#0c0c11]/25 min-w-0">
           
-          {!currentPayload ? (
+          {isCanvasLoading ? (
+             <DashboardSkeleton />
+          ) : !currentPayload && activeSidebarMenu === 'home' ? (
+            <HomeLandingView onNavigate={(menu: any) => setActiveSidebarMenu(menu as any)} />
+          ) : !currentPayload ? (
             
             /* INTRO EXPERIENCE */
-            <div className="max-w-2xl mx-auto w-full my-auto py-12 sm:py-20 flex flex-col items-center">
+            <div className="max-w-2xl mx-auto w-full my-auto py-12 sm:py-20 flex flex-col items-center min-w-0">
               <div className="text-center space-y-5 mb-10">
                 {/* Mockup styled capsule badge */}
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold text-violet-600 bg-violet-50/70 border border-violet-100/90 dark:bg-violet-950/20 dark:text-violet-400 dark:border-violet-900/40 font-mono tracking-wide shadow-sm">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold text-violet-600 bg-violet-50/70 border border-violet-100/90 dark:bg-violet-950/20 dark:text-violet-400 dark:border-violet-900/40 font-mono tracking-wide shadow-sm min-w-0">
                   <Activity className="h-3 w-3 text-violet-500 animate-pulse" />
                   <span>Interactive Dashboard Generator</span>
                 </div>
@@ -1914,7 +2282,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
               {/* Central landing prompt input */}
               <form onSubmit={handleLandingSubmit} className="w-full relative mb-12">
                 {useAppStore.getState().attachedData && (
-                  <div className="flex items-center gap-2 mb-2.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg w-max border border-indigo-100 dark:border-indigo-900/40 animate-fade-in">
+                  <div className="flex items-center gap-2 mb-2.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg w-max border border-indigo-100 dark:border-indigo-900/40 animate-fade-in min-w-0">
                     <Database className="h-3 w-3 text-indigo-500" />
                     <span className="text-xs text-indigo-700 dark:text-indigo-400 font-mono">
                       Data Attached: {useAppStore.getState().attachedData?.fileName}
@@ -1928,7 +2296,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     </button>
                   </div>
                 )}
-                <div className="flex flex-col sm:flex-row gap-2 p-2 rounded-2xl bg-white border border-slate-200/90 shadow-sm dark:bg-zinc-900/40 dark:border-zinc-800 focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500/50 transition-all duration-300">
+                <div className="flex flex-col sm:flex-row gap-2 p-2 rounded-2xl bg-white border border-slate-200/90 shadow-sm dark:bg-zinc-900/40 dark:border-zinc-800 focus-within:ring-2 focus-within:ring-violet-500/20 focus-within:border-violet-500/50 transition-all duration-300 min-w-0">
                   <input
                     type="text"
                     value={promptInput}
@@ -1937,12 +2305,12 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     placeholder="E.g., Paste a Dashboard URL (Tableau, Metabase...) or type a prompt"
                     className="flex-1 px-4 py-3.5 text-sm text-slate-800 dark:text-zinc-100 placeholder-slate-400 dark:placeholder-zinc-650 bg-transparent outline-none border-none focus:ring-0 min-w-0"
                   />
-                  <div className="flex items-center gap-2 px-1 shrink-0">
+                  <div className="flex items-center gap-2 px-1 shrink-0 min-w-0">
                     {/* Inline Import on landing */}
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900/80 dark:hover:bg-zinc-805 rounded-xl text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-all font-mono text-xs inline-flex items-center gap-1.5 border border-slate-200 dark:border-zinc-800/80 h-11 px-4 shrink-0 transition-all duration-200"
+                      className="p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900/80 dark:hover:bg-zinc-805 rounded-xl text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-all font-mono text-xs inline-flex items-center gap-1.5 border border-slate-200 dark:border-zinc-800/80 h-11 px-4 shrink-0 transition-all duration-200 min-w-0"
                       title="Upload config or datasets (CSV/Excel/PDF)"
                     >
                       <Upload className="h-4 w-4" />
@@ -1952,7 +2320,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     <button
                       type="submit"
                       disabled={!promptInput.trim() || isStreaming}
-                      className="px-6 py-2.5 text-xs font-black text-white bg-violet-600 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-40 disabled:pointer-events-none rounded-xl shadow-md hover:shadow-lg transition-all font-sans h-11 shrink-0 inline-flex items-center justify-center cursor-pointer min-w-[100px]"
+                      className="px-6 py-2.5 text-xs font-black text-white bg-violet-600 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 disabled:opacity-40 disabled:pointer-events-none rounded-xl shadow-md hover:shadow-lg transition-all font-sans h-11 shrink-0 inline-flex items-center justify-center cursor-pointer min-w-[100px] min-w-0"
                     >
                       Generate
                     </button>
@@ -1972,19 +2340,19 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           ) : (
 
             /* ACTIVE LAYOUT */
-            <div ref={dashboardRef} className="space-y-6">
+            <div ref={dashboardRef} className="space-y-6 min-w-0">
               
               {/* Dashboard Title & Quick Actions Toolbelt */}
-              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-200 dark:border-zinc-800 pb-6 mb-8">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-slate-200 dark:border-zinc-800 pb-6 mb-8 min-w-0">
                 <div className="space-y-1">
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1 min-w-0">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-500 font-mono">Active Dashboard Workspace</span>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-100/40 dark:border-emerald-900/30 font-mono select-none">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-100/40 dark:border-emerald-900/30 font-mono select-none min-w-0">
                         <Database className="h-2.5 w-2.5 text-emerald-500" /> Auto-Saved
                       </span>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-zinc-50 font-sans flex items-center gap-2 mt-0.5">
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-zinc-50 font-sans flex items-center gap-2 mt-0.5 min-w-0">
                       <span>{currentPayload.title}</span>
                       {isStreaming && (
                         <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 dark:bg-indigo-500 inline-block animate-ping" />
@@ -1999,14 +2367,14 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 </div>
 
                 {/* Operations cluster */}
-                <div data-html2canvas-ignore className="flex flex-wrap items-center gap-2 self-start xl:self-center shrink-0">
+                <div data-html2canvas-ignore className="flex flex-wrap items-center gap-2 self-start xl:self-center shrink-0 min-w-0">
                   {currentPayload.ingestedUrl ? null : (
                   <>
                   {/* Undo Button */}
                   <button
                     onClick={undo}
                     disabled={!canUndo}
-                    className="p-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 transition-all cursor-pointer h-9 w-9 inline-flex items-center justify-center shadow-sm"
+                    className="p-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 transition-all cursor-pointer h-9 w-9 inline-flex items-center justify-center shadow-sm min-w-0"
                     title="Undo design change (Ctrl+Z)"
                   >
                     <Undo className="h-4 w-4" />
@@ -2016,7 +2384,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   <button
                     onClick={redo}
                     disabled={!canRedo}
-                    className="p-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 transition-all cursor-pointer h-9 w-9 inline-flex items-center justify-center shadow-sm"
+                    className="p-2 rounded-lg border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 text-slate-600 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700 dark:hover:bg-zinc-900 dark:text-zinc-400 transition-all cursor-pointer h-9 w-9 inline-flex items-center justify-center shadow-sm min-w-0"
                     title="Redo design change (Ctrl+Y)"
                   >
                     <Redo className="h-4 w-4" />
@@ -2027,7 +2395,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Import Config file launcher */}
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Attach CSV/Excel/PDF or upload JSON template"
                   >
                     <Upload className="h-3.5 w-3.5" />
@@ -2037,7 +2405,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Export Config button */}
                   <button
                     onClick={handleExportDashboard}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Export and download dashboard JSON configuration"
                   >
                     <Download className="h-3.5 w-3.5" />
@@ -2049,7 +2417,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Capture PDF Screenshot button */}
                   <button
                     onClick={handleDownloadPDF}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Download active dashboard layout view as a multi-page PDF"
                   >
                     <Download className="h-3.5 w-3.5 text-slate-400" />
@@ -2059,7 +2427,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Capture Screenshot button */}
                   <button
                     onClick={handleDownloadScreenshot}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Download active dashboard layout view as a PNG image"
                   >
                     <Camera className="h-3.5 w-3.5 text-slate-400" />
@@ -2071,10 +2439,10 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   <div className="h-5 w-px bg-slate-200 dark:bg-zinc-800 mx-1"></div>
 
                   {/* Add-on 2: Live Mode Selector */}
-                  <div className="inline-flex items-center gap-1 bg-white border border-slate-200 px-2 py-1 rounded-lg h-9 dark:bg-zinc-950 dark:border-zinc-800 shrink-0 shadow-sm" title="Periodically refresh components data simulating telemetry feeds">
-                    <span className="relative flex h-2 w-2 mr-1">
+                  <div className="inline-flex items-center gap-1 bg-white border border-slate-200 px-2 py-1 rounded-lg h-9 dark:bg-zinc-950 dark:border-zinc-800 shrink-0 shadow-sm min-w-0" title="Periodically refresh components data simulating telemetry feeds">
+                    <span className="relative flex h-2 w-2 mr-1 min-w-0">
                       <span className={`${refreshInterval ? 'animate-ping' : ''} absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75`}></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 min-w-0"></span>
                     </span>
                     <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 font-mono">LIVE:</span>
                     <select
@@ -2100,7 +2468,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Add-on 3: AI Insights */}
                   <button
                     onClick={fetchAIInsights}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-900/40 dark:text-indigo-400 border border-indigo-150 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:border-indigo-900/40 dark:text-indigo-400 border border-indigo-150 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Generate intelligent automated executive advice and business summaries from active metrics"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
@@ -2110,7 +2478,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   <div className="h-5 w-px bg-slate-200 dark:bg-zinc-800 mx-1"></div>
 
                   {/* Add-on 4: Preset Layout Selector */}
-                  <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-lg h-9 dark:bg-zinc-900/60 dark:border-zinc-800 shrink-0">
+                  <div className="inline-flex items-center gap-1 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-lg h-9 dark:bg-zinc-900/60 dark:border-zinc-800 shrink-0 min-w-0">
                     <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 font-mono mr-1">PRESET:</span>
                     {layoutPresets.map((preset) => (
                       <button
@@ -2133,7 +2501,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Template Gallery Button */}
                   <button
                     onClick={() => setIsTemplateGalleryOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-350 dark:hover:bg-zinc-900 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-350 dark:hover:bg-zinc-900 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Browse and apply pre-configured dashboard templates"
                   >
                     <LayoutTemplate className="h-3.5 w-3.5 text-slate-400" />
@@ -2149,7 +2517,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       setSelectedSectionComponentIds([]);
                       setIsSectionModalOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-350 dark:hover:bg-zinc-900 rounded-lg transition-all h-9 shadow-sm cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 dark:bg-zinc-950 dark:border-zinc-800 dark:text-zinc-350 dark:hover:bg-zinc-900 rounded-lg transition-all h-9 shadow-sm cursor-pointer min-w-0"
                     title="Group related widgets together inside a cozy Visual Container"
                   >
                     <Grid2X2 className="h-3.5 w-3.5 text-slate-400" />
@@ -2162,7 +2530,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       setEditingComponent(null);
                       setIsComponentModalOpen(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-550 dark:hover:bg-indigo-600 rounded-lg transition-all h-9 shadow-md cursor-pointer shadow-indigo-500/10"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-550 dark:hover:bg-indigo-600 rounded-lg transition-all h-9 shadow-md cursor-pointer shadow-indigo-500/10 min-w-0"
                     title="Assemble customized chart/KPI"
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -2176,9 +2544,9 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
               {/* INGESTED URL SANDBOX (DUAL-PANE) */}
               {currentPayload.ingestedUrl ? (
                 <div className="w-full h-[70vh] rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm relative group">
-                  <div className="absolute top-0 left-0 right-0 h-8 bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 flex items-center px-4 justify-between">
-                    <div className="flex items-center gap-2">
-                       <div className="flex gap-1.5">
+                  <div className="absolute top-0 left-0 right-0 h-8 bg-slate-100 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 flex items-center px-4 justify-between min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                       <div className="flex gap-1.5 min-w-0">
                          <div className="w-2.5 h-2.5 rounded-full bg-rose-400"></div>
                          <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
@@ -2215,11 +2583,11 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
                   {/* RESPONSIVE SUBPAGES / TAB SELECTOR */}
               {orderedTabs.length > 0 && (
-                <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-zinc-800/80 pb-2.5 mb-6">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mr-1 shrink-0 flex items-center gap-1">
+                <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-zinc-800/80 pb-2.5 mb-6 min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mr-1 shrink-0 flex items-center gap-1 min-w-0">
                     <Compass className="h-3.5 w-3.5" /> Pages:
                   </span>
-                  <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar flex-1 pb-1">
+                  <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar flex-1 pb-1 min-w-0">
                     <DndContext
                       sensors={sensors}
                       collisionDetection={closestCenter}
@@ -2251,7 +2619,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={componentsToRender.map((c) => c.id)}
+                  items={[...sections.map(s => `section-${s.id}`), ...componentsToRender.map((c) => c.id)]}
                   strategy={rectSortingStrategy}
                 >
                   <motion.div 
@@ -2275,89 +2643,103 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       if (secComps.length === 0) return null;
 
                       return (
-                        <div
-                          key={sec.id}
-                          className="col-span-12 bg-slate-50 border border-slate-200/80 rounded-2xl p-5 dark:bg-zinc-950/20 dark:border-zinc-800/80 space-y-4 shadow-sm animate-fade-in relative"
-                        >
-                          <div className="flex items-center justify-between border-b border-slate-200/50 pb-2.5 dark:border-zinc-800/50">
-                            <div>
-                              <h4 className="text-xs font-mono uppercase tracking-widest text-indigo-650 dark:text-indigo-400 font-bold mb-0.5 flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-505 animate-pulse"></span>
-                                Section Group: {sec.title}
-                              </h4>
-                              {sec.description && (
-                                <p className="text-[11px] text-slate-500 dark:text-zinc-500 font-medium">
-                                  {sec.description}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 z-10">
-                              <button
-                                onClick={() => {
-                                  setEditingSectionId(sec.id);
-                                  setNewSectionTitle(sec.title);
-                                  setNewSectionDesc(sec.description || '');
-                                  setSelectedSectionComponentIds(sec.componentIds);
-                                  setIsSectionModalOpen(true);
-                                }}
-                                className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 transition-all border border-slate-200 hover:border-indigo-200 bg-white dark:bg-zinc-950 dark:border-zinc-800 rounded-lg cursor-pointer"
-                              >
-                                Edit Group
-                              </button>
-                              <button
-                                onClick={() => handleDeleteSection(sec.id)}
-                                className="px-2 py-1 text-[10px] font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 border border-transparent hover:border-rose-200 rounded-lg cursor-pointer transition-all shrink-0"
-                              >
-                                Ungroup
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative">
-                            {secComps.map((component) => {
-                               const smCol = component.layout?.sm || 12;
-                               const mdCol = component.layout?.md || 12;
-                               const lgCol = component.layout?.lg || 6;
-                               const colSpanClass = getColSpanClasses(smCol, mdCol, lgCol);
-                               const filteredRows = filterComponentData(component, currentPayload.filters || [], filterState);
-
-                              return (
-                                <div key={component.id} id={`widget-card-${component.id}`} className={`${colSpanClass} scroll-mt-24 transition-all duration-300 rounded-3xl`}>
-                                  <ChartWrapper
-                                    component={component}
-                                    filteredData={filteredRows}
-                                    filterState={filterState}
-                                    onEditComponent={(comp) => {
-                                      setEditingComponent(comp);
-                                      setIsComponentModalOpen(true);
-                                    }}
-                                    onDeleteComponent={handleDeleteComponent}
-                                    isFullscreen={false}
-                                    onToggleFullscreen={(id) => setFullscreenComponentId(id)}
-                                    onDrillDown={(key, val) => {
-                                      const normalizedKey = key.toLowerCase();
-                                      const existingFilter = currentPayload.filters?.find(f => 
-                                        f.targetKeys.some(tk => tk.toLowerCase() === normalizedKey)
-                                      );
-                                      if (existingFilter) {
-                                        setFilterState(prev => {
-                                          const prevVals = prev.selectedCategories[existingFilter.id] || [];
-                                          const isSelected = prevVals.includes(val);
-                                          const newVals = isSelected ? prevVals.filter(v => v !== val) : [...prevVals, val];
-                                          return { ...prev, selectedCategories: { ...prev.selectedCategories, [existingFilter.id]: newVals } };
-                                        });
-                                      } else {
-                                        const newFilterId = `f_${key}_${Date.now()}`;
-                                        const nextPayload = { ...currentPayload, filters: [...(currentPayload.filters||[]), { id: newFilterId, label: key.toUpperCase(), type: 'category_select' as const, targetKeys: [key] }] };
-                                        pushState(nextPayload).then(() => setFilterState(prev => ({ ...prev, selectedCategories: { ...prev.selectedCategories, [newFilterId]: [val] } })));
-                                      }
-                                    }}
-                                  />
+                        <SortableSectionItem key={sec.id} id={`section-${sec.id}`}>
+                          <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-5 dark:bg-zinc-950/20 dark:border-zinc-800/80 space-y-4 shadow-sm animate-fade-in relative z-20">
+                            <div className="flex items-center justify-between border-b border-slate-200/50 pb-2.5 dark:border-zinc-800/50 pl-6 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <button 
+                                  onClick={() => setCollapsedSectionIds(prev => prev.includes(sec.id) ? prev.filter(id => id !== sec.id) : [...prev, sec.id])} 
+                                  className="text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
+                                >
+                                  {collapsedSectionIds.includes(sec.id) ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </button>
+                                <div>
+                                  <h4 className="text-xs font-mono uppercase tracking-widest text-indigo-650 dark:text-indigo-400 font-bold mb-0.5 flex items-center gap-1.5 min-w-0">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-505 animate-pulse"></span>
+                                    Section Group: {sec.title}
+                                  </h4>
+                                  {sec.description && (
+                                    <p className="text-[11px] text-slate-500 dark:text-zinc-500 font-medium">
+                                      {sec.description}
+                                    </p>
+                                  )}
                                 </div>
-                              );
-                            })}
+                              </div>
+                              <div className="flex items-center gap-1.5 z-10 min-w-0">
+                                <button
+                                  onClick={() => {
+                                    setEditingSectionId(sec.id);
+                                    setNewSectionTitle(sec.title);
+                                    setNewSectionDesc(sec.description || '');
+                                    setSelectedSectionComponentIds(sec.componentIds);
+                                    setIsSectionModalOpen(true);
+                                  }}
+                                  className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 dark:text-zinc-400 dark:hover:text-indigo-400 transition-all border border-slate-200 hover:border-indigo-200 bg-white dark:bg-zinc-950 dark:border-zinc-800 rounded-lg cursor-pointer"
+                                >
+                                  Edit Group
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSection(sec.id)}
+                                  className="px-2 py-1 text-[10px] font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 border border-transparent hover:border-rose-200 rounded-lg cursor-pointer transition-all shrink-0"
+                                >
+                                  Ungroup
+                                </button>
+                              </div>
+                            </div>
+
+                            <div 
+                              className={`grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch relative origin-top transition-all duration-550 ease-in-out overflow-hidden ${
+                                collapsedSectionIds.includes(sec.id) 
+                                  ? 'max-h-0 opacity-0 pointer-events-none border-none mt-0 pt-0 py-0' 
+                                  : 'max-h-[8000px] opacity-100 mt-4'
+                              }`}
+                            >
+                              {secComps.map((component) => {
+                                 const smCol = component.layout?.sm || 12;
+                                 const mdCol = component.layout?.md || 12;
+                                 const lgCol = component.layout?.lg || 6;
+                                 const colSpanClass = getColSpanClasses(smCol, mdCol, lgCol);
+                                 const filteredRows = filterComponentData(component, currentPayload.filters || [], filterState);
+  
+                                return (
+                                  <div key={`${component.id}_${reconciliationKey}`} id={`widget-card-${component.id}`} className={`${colSpanClass} scroll-mt-24 transition-all duration-300 rounded-3xl`}>
+                                    <ChartWrapper
+                                      component={component}
+                                      filteredData={filteredRows}
+                                      filterState={filterState}
+                                      onEditComponent={(comp) => {
+                                        setEditingComponent(comp);
+                                        setIsComponentModalOpen(true);
+                                      }}
+                                      onDeleteComponent={handleDeleteComponent}
+                                      isFullscreen={false}
+                                      onToggleFullscreen={(id) => setFullscreenComponentId(id)}
+                                      onDrillDown={(key, val) => {
+                                        const normalizedKey = key.toLowerCase();
+                                        const existingFilter = currentPayload.filters?.find(f => 
+                                          f.targetKeys.some(tk => tk.toLowerCase() === normalizedKey)
+                                        );
+                                        if (existingFilter) {
+                                          setFilterState(prev => {
+                                            const prevVals = prev.selectedCategories[existingFilter.id] || [];
+                                            const isSelected = prevVals.includes(val);
+                                            const newVals = isSelected ? prevVals.filter(v => v !== val) : [...prevVals, val];
+                                            return { ...prev, selectedCategories: { ...prev.selectedCategories, [existingFilter.id]: newVals } };
+                                          });
+                                        } else {
+                                          const newFilterId = `f_${key}_${Date.now()}`;
+                                          const nextPayload = { ...currentPayload,
+    logActivity, filters: [...(currentPayload.filters||[]), { id: newFilterId, label: key.toUpperCase(), type: 'category_select' as const, targetKeys: [key] }] };
+                                          pushState(nextPayload).then(() => setFilterState(prev => ({ ...prev, selectedCategories: { ...prev.selectedCategories, [newFilterId]: [val] } })));
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
+                        </SortableSectionItem>
                       );
                     })}
 
@@ -2374,7 +2756,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
                       return (
                         <motion.div
-                          key={component.id}
+                          key={`${component.id}_${reconciliationKey}`}
                           id={`widget-card-${component.id}`}
                           layout
                           variants={{
@@ -2408,7 +2790,8 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                                   setFilterState(prev => ({ ...prev, selectedCategories: { ...prev.selectedCategories, [existingFilter.id]: [val] } }));
                                 } else {
                                   const newFilterId = `f_${key}_${Date.now()}`;
-                                  const nextPayload = { ...currentPayload, filters: [...(currentPayload.filters||[]), { id: newFilterId, label: key.toUpperCase(), type: 'category_select' as const, targetKeys: [key] }] };
+                                  const nextPayload = { ...currentPayload,
+    logActivity, filters: [...(currentPayload.filters||[]), { id: newFilterId, label: key.toUpperCase(), type: 'category_select' as const, targetKeys: [key] }] };
                                   pushState(nextPayload).then(() => setFilterState(prev => ({ ...prev, selectedCategories: { ...prev.selectedCategories, [newFilterId]: [val] } })));
                                 }
                               }}
@@ -2422,7 +2805,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
               </DndContext>
 
               {componentsToRender.length === 0 && currentPayload.components?.length > 0 && (
-                <div className="flex h-48 flex-col items-center justify-center text-center p-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 dark:bg-zinc-900/10">
+                <div className="flex h-48 flex-col items-center justify-center text-center p-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 dark:bg-zinc-900/10 min-w-0">
                   <Grid2X2 className="h-6 w-6 text-slate-350 dark:text-zinc-700 mb-2" />
                   <span className="text-xs font-semibold text-slate-500 font-mono">Page Empty</span>
                   <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1 max-w-sm">
@@ -2432,12 +2815,97 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
               )}
 
               {currentPayload.components?.length === 0 && (
-                <div className="flex h-64 flex-col items-center justify-center text-center p-8 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5">
+                <div className="flex h-64 flex-col items-center justify-center text-center p-8 rounded-2xl border border-dashed border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-900/5 min-w-0">
                   <Grid2X2 className="h-10 w-10 text-slate-300 dark:text-zinc-700 animate-pulse mb-3" />
                   <span className="text-xs font-semibold text-slate-500 font-mono">Empty Canvas Grid</span>
                   <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1 max-w-[240px]">
                     Create custom KPI aggregates or analytical graphs using "+ Add Component" above!
                   </p>
+                </div>
+              )}
+
+              {/* CHAUPL SESSIONS INTERACTIVE SEED TABLE */}
+              {((currentPayload.title || '').toLowerCase().includes('chaupal') || activeTab.toLowerCase().includes('chaupal')) && (
+                <div className="mt-8 bg-white dark:bg-zinc-950 rounded-3xl border border-slate-200 dark:border-zinc-900/80 shadow-xs overflow-hidden animate-fade-in w-full">
+                  <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-zinc-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-[#64748b] dark:text-zinc-400 flex items-center gap-2 min-w-0">
+                        <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                        Recent Chaupal Sessions Log
+                      </h3>
+                      <p className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1 font-mono">
+                        Comprehensive audit status of community interventions, participants and local challenges
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 dark:bg-indigo-950/25 dark:text-indigo-400 px-2.5 py-1 rounded-full font-mono font-bold">
+                        {recentChaupalSessions.length} Active Records
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                      <thead>
+                        <tr className="bg-slate-50/70 dark:bg-zinc-900/40 border-b border-slate-200/50 dark:border-zinc-800/80">
+                          <th className="p-4 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono">Session Date</th>
+                          <th className="p-4 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono">Location / District</th>
+                          <th className="p-4 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono">Category</th>
+                          <th className="p-4 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono text-center">Participants</th>
+                          <th className="p-4 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono text-center">Issues Shared</th>
+                          <th className="p-4 text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider font-mono">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-zinc-900">
+                        {recentChaupalSessions.map((session, sidx) => (
+                          <tr key={sidx} className="hover:bg-slate-50/40 dark:hover:bg-zinc-900/10 transition-colors">
+                            <td className="p-4">
+                              <span className="text-xs font-bold text-slate-700 dark:text-zinc-200 font-mono">
+                                {session.date}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="h-7.5 w-7.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-[10px] font-bold text-indigo-650 dark:text-indigo-400 flex items-center justify-center font-mono min-w-0">
+                                  {session.village.charAt(0)}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                                    {session.village}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-medium">
+                                    {session.district} District
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-100 dark:bg-zinc-900 dark:text-zinc-300 text-slate-600 border border-slate-200/40 dark:border-zinc-800/60 font-sans">
+                                {session.sessionType}
+                              </span>
+                            </td>
+                            <td className="p-4 text-center">
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-indigo-50/50 dark:bg-indigo-950/10 text-indigo-700 dark:text-indigo-400 text-xs font-black font-mono min-w-0">
+                                <Users className="h-3 w-3" />
+                                {session.participants}
+                              </div>
+                            </td>
+                            <td className="p-4 text-center">
+                              <span className="text-xs font-bold font-mono text-slate-700 dark:text-zinc-200">
+                                {session.challengesShared}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-md border border-emerald-100 dark:border-emerald-900/30 min-w-0">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                                {session.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
               </>
@@ -2448,7 +2916,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           {/* Active removable tag chips in Panel B */}
           {Object.keys(filterState.selectedCategories).length > 0 && (
             <div className="mt-6 p-3 bg-white dark:bg-zinc-900 border border-slate-250 dark:border-zinc-900 rounded-2xl space-y-2 shrink-0 max-w-xl">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between min-w-0">
                 <span className="text-[9px] font-mono font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-mono">Active Filters</span>
                 <button 
                   onClick={handleResetFilters}
@@ -2457,7 +2925,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   Clear All
                 </button>
               </div>
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
+              <div className="flex flex-wrap gap-1.5 mt-1.5 min-w-0">
                 {Object.entries(filterState.selectedCategories).map(([filterId, val]) => {
                   if (!val) return null;
                   const filterObj = currentPayload?.filters?.find(f => f.id === filterId);
@@ -2465,7 +2933,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   return (
                     <span 
                       key={filterId}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-50 border border-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/45 select-none animate-fade-in"
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-50 border border-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/45 select-none animate-fade-in min-w-0"
                     >
                       <span className="opacity-80 truncate max-w-[80px]">{filterLabel}:</span>
                       <span className="truncate max-w-[80px] font-bold">{val}</span>
@@ -2489,49 +2957,62 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
           )}
 
         </main>
+        </Panel>
 
         {/* PANEL C: RIGHT SIDEBAR - ASSISTANTS & CONVERSATIONS */}
-        <div className={`col-span-12 lg:col-span-4 xl:col-span-3 bg-slate-50/70 dark:bg-[#09090c]/90 p-4 lg:p-5 flex flex-col h-full overflow-hidden border-l border-slate-200 dark:border-zinc-900 ${mobileTab === 'chat' ? 'block' : 'hidden lg:flex'}`}>
-          
-          {/* Segmented Tab Headers */}
-          <div className="flex bg-slate-100 dark:bg-zinc-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-zinc-800 shadow-inner mb-4 w-full shrink-0">
-            <button
-              type="button"
-              onClick={() => setRightActiveChatTab('builder')}
-              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                rightActiveChatTab === 'builder'
-                  ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
-                  : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
-              }`}
-            >
-              🛠️ Layout Builder
-            </button>
-            <button
-              type="button"
-              onClick={() => setRightActiveChatTab('qa')}
-              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                rightActiveChatTab === 'qa'
-                  ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
-                  : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
-              }`}
-            >
-              💡 Data Analyst Q&A
-            </button>
-          </div>
+        {!isQAPanelCollapsed && (
+          <>
+            <PanelResizeHandle className="w-1.5 bg-slate-200/50 hover:bg-indigo-500 dark:bg-zinc-900 dark:hover:bg-indigo-500 transition-colors cursor-col-resize shrink-0" />
+            <Panel id="right-sidebar" defaultSize={20} collapsible={true} maxSize={40} minSize={15} className="bg-slate-50/70 dark:bg-[#09090c]/90 h-full overflow-hidden border-l border-slate-200 dark:border-zinc-900 transition-all flex flex-col z-30">
+              <div className="p-4 lg:p-5 flex flex-col h-full overflow-hidden z-30 min-w-0">
+                <div className="flex justify-between items-center mb-4 min-w-0">
+                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Panel</h3>
+                    <div className="flex gap-2 min-w-0">
+                      <button onClick={() => setIsQAPanelCollapsed(true)} className="p-1 hover:bg-slate-200 dark:hover:bg-zinc-800 rounded">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                </div>
+                
+                {/* Segmented Tab Headers */}
+                <div className="flex bg-slate-100 dark:bg-zinc-900 rounded-xl p-0.5 border border-slate-200/60 dark:border-zinc-800 shadow-inner mb-4 w-full shrink-0 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setRightActiveChatTab('builder')}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      rightActiveChatTab === 'builder'
+                        ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
+                        : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    🛠️ Layout Builder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRightActiveChatTab('qa')}
+                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      rightActiveChatTab === 'qa'
+                        ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm font-bold'
+                        : 'text-slate-450 hover:text-slate-750 dark:text-zinc-400 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    💡 Data Analyst Q&A
+                  </button>
+                </div>
 
-          {/* Active Tab View */}
-          <div className="flex-1 flex flex-col min-h-0">
+                {/* Active Tab View */}
+          <div className="flex-1 flex flex-col min-h-0 min-w-0">
             {rightActiveChatTab === 'builder' ? (
               /* TAB 1: DESIGN & LAYOUT BUILDER CHAT */
-              <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 flex flex-col min-h-0 min-w-0">
                 {/* Header Info */}
-                <div className="mb-3 shrink-0 flex items-center justify-between">
+                <div className="mb-3 shrink-0 flex items-center justify-between min-w-0">
                   <div>
                     <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-widest font-mono">Dost-Builder Chat</h4>
                     <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-sans">Type instructions to compile or edit layout state</p>
                   </div>
                   {currentPayload && (
-                    <div className="flex items-center gap-1.5 bg-violet-50 dark:bg-violet-950/20 text-violet-750 dark:text-violet-400 border border-violet-100/40 dark:border-violet-900/40 px-2 py-0.5 rounded text-[9px] font-bold font-mono">
+                    <div className="flex items-center gap-1.5 bg-violet-50 dark:bg-violet-950/20 text-violet-750 dark:text-violet-400 border border-violet-100/40 dark:border-violet-900/40 px-2 py-0.5 rounded text-[9px] font-bold font-mono min-w-0">
                       <span>{builderMode === 'edit' ? 'EDIT MODE' : 'NEW MODE'}</span>
                     </div>
                   )}
@@ -2544,7 +3025,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       type="button"
                       onClick={undo}
                       disabled={!canUndo}
-                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer min-w-0"
                       title="Undo last layout state changes"
                     >
                       <Undo className="h-3 w-3" />
@@ -2554,7 +3035,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       type="button"
                       onClick={redo}
                       disabled={!canRedo}
-                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-850 dark:bg-zinc-900 text-slate-650 dark:text-zinc-300 hover:text-indigo-650 disabled:opacity-40 transition-all cursor-pointer min-w-0"
                       title="Redo previously undone state transition"
                     >
                       <Redo className="h-3 w-3" />
@@ -2568,7 +3049,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                           setNotify({ type: 'success', message: 'Copied layout JSON configuration!' });
                         } catch (_) {}
                       }}
-                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-indigo-600 transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-indigo-600 transition-all cursor-pointer min-w-0"
                       title="Copy JSON layout spec"
                     >
                       <FileJson className="h-3 w-3" />
@@ -2577,7 +3058,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     <button
                       type="button"
                       onClick={handleClearWorkspace}
-                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-rose-500 transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-lg border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 text-slate-750 dark:text-zinc-300 hover:text-rose-500 transition-all cursor-pointer min-w-0"
                       title="Reset canvas state"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -2587,9 +3068,9 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 )}
 
                 {/* Builder Chat Logs Area */}
-                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-100/50 dark:bg-zinc-950/40 rounded-2xl border border-slate-200/40 dark:border-zinc-900/60 custom-scrollbar mb-3 min-h-0">
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-100/50 dark:bg-zinc-950/40 rounded-2xl border border-slate-200/40 dark:border-zinc-900/60 custom-scrollbar mb-3 min-h-0 min-w-0">
                   {chats.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto">
+                    <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto min-w-0">
                       <div className="p-3 bg-white dark:bg-zinc-900 border border-slate-250 dark:border-zinc-800 rounded-full shadow-xs">
                         <Bot className="h-5 w-5 text-indigo-500 animate-pulse" />
                       </div>
@@ -2622,7 +3103,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   {/* Streaming Progression Animation */}
                   {isStreaming && (
                     <div className="p-3 rounded-xl bg-indigo-50/50 dark:bg-zinc-900/60 border border-indigo-100/50 dark:border-indigo-900/45 space-y-2 font-mono text-[10px] animate-pulse">
-                      <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider text-[9px] shrink-0">
+                      <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider text-[9px] shrink-0 min-w-0">
                         <Activity className="h-3.5 w-3.5 animate-spin" />
                         <span>Compiling Layout Specs...</span>
                       </div>
@@ -2639,7 +3120,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 {/* Builder Input Box */}
                 <div className="shrink-0 bg-white dark:bg-zinc-950 p-3 border border-slate-300 dark:border-zinc-700 rounded-xl space-y-2">
                   {currentPayload && (
-                    <div className="flex bg-slate-200 dark:bg-zinc-800 rounded-lg p-0.5 border border-slate-300/40 dark:border-zinc-700 items-center justify-around">
+                    <div className="flex bg-slate-200 dark:bg-zinc-800 rounded-lg p-0.5 border border-slate-300/40 dark:border-zinc-700 items-center justify-around min-w-0">
                       <button
                         type="button"
                         onClick={() => setBuilderMode('edit')}
@@ -2667,7 +3148,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     </div>
                   )}
 
-                  <form onSubmit={handleBuilderSubmit} className="relative flex items-center">
+                  <form onSubmit={handleBuilderSubmit} className="relative flex items-center min-w-0">
                     <input
                       type="text"
                       value={builderInput}
@@ -2698,14 +3179,14 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
               </div>
             ) : (
               /* TAB 2: DATA ANALYST Q&A CHAT */
-              <div className="flex-1 flex flex-col min-h-0 font-sans">
+              <div className="flex-1 flex flex-col min-h-0 font-sans min-w-0">
                 {/* Header Info */}
-                <div className="mb-3 shrink-0 flex items-center justify-between">
+                <div className="mb-3 shrink-0 flex items-center justify-between min-w-0">
                   <div>
                     <h4 className="text-xs font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-widest font-mono">Data Analyst Q&A</h4>
                     <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-sans">Ask questions about trends and metrics context</p>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-405 border border-emerald-100/40 dark:border-emerald-900/35 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0">
+                  <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-405 border border-emerald-100/40 dark:border-emerald-900/35 px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0 min-w-0">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span>DASHBOARD LIVE</span>
                   </div>
@@ -2714,7 +3195,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 {/* Current Context Summary */}
                 {currentPayload && (
                   <div className="mb-3 p-3 bg-violet-50/50 dark:bg-violet-950/15 border border-violet-100/40 dark:border-violet-900/45 rounded-xl space-y-1.5 text-[10px] shrink-0 transition-all">
-                    <div className="flex items-center gap-1.5 font-bold text-violet-700 dark:text-violet-300 font-sans">
+                    <div className="flex items-center gap-1.5 font-bold text-violet-700 dark:text-violet-300 font-sans min-w-0">
                       <Compass className="h-3.5 w-3.5 text-violet-600" />
                       <span>Current Grounding Context</span>
                     </div>
@@ -2722,7 +3203,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                       <div>
                         <span className="font-extrabold text-slate-900 dark:text-white">Dashboard:</span> {currentPayload.title}
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 leading-relaxed">
+                      <div className="flex flex-wrap items-center gap-1.5 leading-relaxed min-w-0">
                         <span className="font-extrabold text-slate-900 dark:text-white">Filters:</span>
                         {(() => {
                           const activeFilterLabels: string[] = [];
@@ -2747,9 +3228,9 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 )}
 
                 {/* Q&A Chat Logs Area */}
-                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-white dark:bg-zinc-950 rounded-2xl border border-slate-300 dark:border-zinc-800 custom-scrollbar mb-3 min-h-0">
+                <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-white dark:bg-zinc-950 rounded-2xl border border-slate-300 dark:border-zinc-800 custom-scrollbar mb-3 min-h-0 min-w-0">
                   {qaChats.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto font-sans">
+                    <div className="h-full flex flex-col items-center justify-center text-center p-4 space-y-3 my-auto font-sans min-w-0">
                       <div className="p-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-full shadow-xs">
                         <MessageSquare className="h-5 w-5 text-emerald-500 animate-pulse" />
                       </div>
@@ -2777,7 +3258,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                             <div>{chat.content}</div>
 
                             {chat.role === 'assistant' && chat.sourceWidgetIds && chat.sourceWidgetIds.length > 0 && (
-                              <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-1.5 items-center">
+                              <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800 flex flex-wrap gap-1.5 items-center min-w-0">
                                 <span className="text-[9px] uppercase tracking-wider text-slate-400 dark:text-zinc-500 font-mono font-bold">Sources:</span>
                                 {chat.sourceWidgetIds.map(compId => {
                                   const widget = currentPayload?.components?.find(c => c.id === compId);
@@ -2796,7 +3277,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                                           }, 2500);
                                         }
                                       }}
-                                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40 text-violet-750 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60 rounded-full text-[9px] font-extrabold transition-all hover:scale-105 active:scale-95 cursor-pointer max-w-full truncate"
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40 text-violet-750 dark:text-violet-300 border border-violet-100 dark:border-violet-900/60 rounded-full text-[9px] font-extrabold transition-all hover:scale-105 active:scale-95 cursor-pointer max-w-full truncate min-w-0"
                                       title={`Click to focus: ${displayName}`}
                                     >
                                       <Compass className="h-2.5 w-2.5 shrink-0 text-violet-500 animate-pulse" />
@@ -2813,7 +3294,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   )}
 
                   {isQaStreaming && (
-                    <div className="flex items-center gap-2 mr-auto text-indigo-650 dark:text-indigo-400 font-mono text-[9px] animate-pulse">
+                    <div className="flex items-center gap-2 mr-auto text-indigo-650 dark:text-indigo-400 font-mono text-[9px] animate-pulse min-w-0">
                       <Activity className="h-3 w-3 animate-spin text-indigo-550" />
                       <span>Data Assistant is analyzing dashboard metrics...</span>
                     </div>
@@ -2823,7 +3304,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                 {/* Q&A Suggestion Chips focused specifically on analytical reviews */}
                 {currentPayload && (
                   <div className="mb-3 shrink-0">
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 min-w-0">
                       {[
                         { label: "📊 Summary", q: "Can you summarize the main metrics and key insights from the active dashboard?" },
                         { label: "📈 Spikes/Spurs", q: "Are there any major spikes or interesting trends inside the dataset metrics?" },
@@ -2846,7 +3327,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
 
                 {/* Q&A Input Box */}
                 {suggestions.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 px-2 pb-2">
+                  <div className="flex flex-wrap gap-1.5 px-2 pb-2 min-w-0">
                     {suggestions.map((suggestion, index) => (
                       <button
                         key={index}
@@ -2862,7 +3343,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                   </div>
                 )}
                 <div className="shrink-0 bg-white/50 dark:bg-zinc-900/20 p-2 border border-slate-205 dark:border-zinc-905 rounded-xl space-y-2">
-                  <form onSubmit={handleQaSubmit} className="relative flex items-center">
+                  <form onSubmit={handleQaSubmit} className="relative flex items-center min-w-0">
                     <input
                       type="text"
                       value={qaInput}
@@ -2890,7 +3371,7 @@ Ask me any questions about the metrics, trends, or records displayed above! For 
                     </button>
                   </form>
                   {qaChats.length > 1 && (
-                    <div className="flex items-center justify-end">
+                    <div className="flex items-center justify-end min-w-0">
                       <button
                         type="button"
                         onClick={() => {
@@ -2917,12 +3398,29 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               </div>
             )}
           </div>
-        </div>
+              </div>
+            </Panel>
+          </>
+        )}
 
-      </div>
+      </PanelGroup>
+
+      {/* FLOATING CHAT BUTTON WHEN COLLAPSED */}
+      {isQAPanelCollapsed && (
+        <button
+          onClick={() => setIsQAPanelCollapsed(false)}
+          className="fixed bottom-6 right-6 z-40 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-4 shadow-xl transition-transform hover:scale-105 active:scale-95"
+          title="Open AI Assistant"
+        >
+          <MessageSquare className="h-6 w-6" />
+          {isQaStreaming && (
+            <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse border-2 border-indigo-600" />
+          )}
+        </button>
+      )}
 
       {/* MOBILE RESPONSIVE BOTTOM TAB SELECTOR BAR */}
-      <div className="lg:hidden shrink-0 h-16 border-t border-slate-200 bg-white/90 dark:border-zinc-900 dark:bg-zinc-950/90 backdrop-blur-md flex items-center justify-around px-2 sticky bottom-0 z-30 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] pb-safe-bottom">
+      <div className="lg:hidden shrink-0 h-16 border-t border-slate-200 bg-white/90 dark:border-zinc-900 dark:bg-zinc-950/90 backdrop-blur-md flex items-center justify-around px-2 sticky bottom-0 z-30 shadow-[0_-2px_10px_rgba(0,0,0,0.03)] pb-safe-bottom min-w-0">
         <button
           onClick={() => setMobileTab('history')}
           className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-all cursor-pointer ${mobileTab === 'history' ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/10 font-bold' : 'text-slate-400 hover:text-slate-600'}`}
@@ -2982,8 +3480,8 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
         if (!comp) return null;
         const filteredRows = filterComponentData(comp, currentPayload?.filters || [], filterState);
         return (
-          <div className="fixed inset-0 z-50 bg-white dark:bg-zinc-950 p-6 md:p-10 flex flex-col w-screen h-screen overflow-auto">
-            <div className="flex-1 flex flex-col h-full">
+          <div className="fixed inset-0 z-50 bg-white dark:bg-zinc-950 p-6 md:p-10 flex flex-col w-screen h-screen overflow-auto min-w-0">
+            <div className="flex-1 flex flex-col h-full min-w-0">
               <ChartWrapper
                 component={comp}
                 filteredData={filteredRows}
@@ -3003,7 +3501,8 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
                     setFilterState(prev => ({ ...prev, selectedCategories: { ...prev.selectedCategories, [existingFilter.id]: [val] } }));
                   } else if (currentPayload) {
                     const newFilterId = `f_${key}_${Date.now()}`;
-                    const nextPayload = { ...currentPayload, filters: [...(currentPayload.filters||[]), { id: newFilterId, label: key.toUpperCase(), type: 'category_select' as const, targetKeys: [key] }] };
+                    const nextPayload = { ...currentPayload,
+    logActivity, filters: [...(currentPayload.filters||[]), { id: newFilterId, label: key.toUpperCase(), type: 'category_select' as const, targetKeys: [key] }] };
                     pushState(nextPayload).then(() => setFilterState(prev => ({ ...prev, selectedCategories: { ...prev.selectedCategories, [newFilterId]: [val] } })));
                   }
                   setFullscreenComponentId(null); // exit fullscreen on drill down
@@ -3016,10 +3515,10 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
 
       {/* AI INSIGHTS DIALOG VIEW OVERLAY */}
       {insightsPromptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col justify-start overflow-hidden font-sans">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in min-w-0">
+          <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col justify-start overflow-hidden font-sans min-w-0">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
                 <div className="p-1 text-indigo-600 bg-indigo-50 border border-indigo-120 rounded-lg dark:bg-indigo-950/20 dark:text-indigo-400">
                   <Sparkles className="h-4.5 w-4.5 animate-pulse" />
                 </div>
@@ -3036,9 +3535,9 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-5 custom-scrollbar text-xs leading-relaxed font-sans text-slate-700 dark:text-zinc-350">
+            <div className="flex-1 overflow-y-auto py-5 custom-scrollbar text-xs leading-relaxed font-sans text-slate-700 dark:text-zinc-350 min-w-0">
               {insightsLoading ? (
-                <div className="flex flex-col items-center justify-center py-10 space-y-3.5">
+                <div className="flex flex-col items-center justify-center py-10 space-y-3.5 min-w-0">
                   <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                   <span className="text-xs font-semibold text-slate-500 font-mono animate-pulse">Analyzing dashboard metrics...</span>
                 </div>
@@ -3050,7 +3549,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
                     }
                     if (line.startsWith('-') || line.startsWith('*')) {
                       return (
-                        <div key={idx} className="flex gap-2.5 items-start pl-2">
+                        <div key={idx} className="flex gap-2.5 items-start pl-2 min-w-0">
                           <span className="text-indigo-600 shrink-0 font-extrabold">•</span>
                           <span className="text-slate-600 dark:text-zinc-350">{line.substring(2).trim()}</span>
                         </div>
@@ -3065,12 +3564,13 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 border-t border-slate-200 pt-3 dark:border-zinc-800">
+            <div className="flex items-center justify-end gap-2.5 border-t border-slate-200 pt-3 dark:border-zinc-800 min-w-0">
               {insightsText && (
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(insightsText);
                     showNotification("AI Insights copied to clipboard!", "success");
+    logActivity(String("AI Insights copied to clipboard!"));
                   }}
                   className="px-3.5 py-1.5 text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-900 dark:border-zinc-850 rounded-xl cursor-pointer shadow-sm"
                 >
@@ -3090,10 +3590,10 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
 
       {/* SHARE Deep-link MODAL OVERLAY */}
       {shareLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in font-sans min-w-0">
           <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 w-full max-w-lg">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
                 <div className="p-1.5 text-indigo-600 bg-indigo-50 border border-indigo-120 rounded-lg dark:bg-indigo-950/25 dark:text-indigo-400">
                   <Share2 className="h-4.5 w-4.5" />
                 </div>
@@ -3115,7 +3615,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
                 The link below hosts a complete representation of your current dashboard canvas, including widget placements, colors, layout structures, and active category list filters:
               </p>
               
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5 dark:bg-zinc-900/60 dark:border-zinc-800">
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5 dark:bg-zinc-900/60 dark:border-zinc-800 min-w-0">
                 <input
                   type="text"
                   readOnly
@@ -3127,9 +3627,10 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
                   onClick={() => {
                     navigator.clipboard.writeText(shareLink).then(() => {
                       showNotification("Deep link copied to clipboard!", "success");
+    logActivity(String("Deep link copied to clipboard!"));
                     });
                   }}
-                  className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg dark:bg-zinc-850 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-all text-slate-600 dark:text-zinc-300 inline-flex items-center justify-center cursor-pointer shrink-0"
+                  className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg dark:bg-zinc-850 dark:border-zinc-700 dark:hover:bg-zinc-800 transition-all text-slate-600 dark:text-zinc-300 inline-flex items-center justify-center cursor-pointer shrink-0 min-w-0"
                   title="Copy Link to Clipboard"
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -3137,7 +3638,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               </div>
             </div>
 
-            <div className="flex items-center justify-end border-t border-slate-200 pt-3 dark:border-zinc-800">
+            <div className="flex items-center justify-end border-t border-slate-200 pt-3 dark:border-zinc-800 min-w-0">
               <button
                 onClick={() => setShareLink(null)}
                 className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-505 dark:hover:bg-indigo-650 rounded-xl cursor-pointer"
@@ -3151,9 +3652,9 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
 
       {/* SECTION GROUP CREATION OVERLAY */}
       {isSectionModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in font-sans">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs animate-fade-in font-sans min-w-0">
           <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800 min-w-0">
               <h3 className="font-bold text-slate-900 dark:text-zinc-50 text-sm tracking-tight uppercase">
                 {editingSectionId ? 'Configure Group Container' : 'Create Visual Section'}
               </h3>
@@ -3198,7 +3699,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
                     (currentPayload?.components || []).map((c) => {
                       const isSelected = selectedSectionComponentIds.includes(c.id);
                       return (
-                        <label key={c.id} className="flex items-center gap-2.5 py-1 px-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-900 cursor-pointer text-slate-700 dark:text-zinc-200 select-none">
+                        <label key={c.id} className="flex items-center gap-2.5 py-1 px-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-900 cursor-pointer text-slate-700 dark:text-zinc-200 select-none min-w-0">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -3220,7 +3721,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pb-1 text-xs font-sans">
+            <div className="flex items-center justify-end gap-2 pb-1 text-xs font-sans min-w-0">
               <button
                 onClick={() => setIsSectionModalOpen(false)}
                 className="px-3.5 py-1.5 text-slate-550 hover:text-slate-850 font-semibold"
@@ -3241,10 +3742,10 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
 
       {/* TEMPLATE GALLERY OVERLAY */}
       {isTemplateGalleryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs font-sans animate-fade-in">
-          <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col justify-start overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-xs font-sans animate-fade-in min-w-0">
+          <div className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-6 w-full max-w-2xl max-h-[85vh] flex flex-col justify-start overflow-hidden min-w-0">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 dark:border-zinc-800 min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
                 <div className="p-1.5 bg-slate-100 dark:bg-zinc-900 rounded-lg text-slate-500 dark:text-zinc-400">
                   <LayoutTemplate className="h-5 w-5" />
                 </div>
@@ -3261,14 +3762,14 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto py-5 custom-scrollbar text-xs leading-relaxed font-sans grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex-1 overflow-y-auto py-5 custom-scrollbar text-xs leading-relaxed font-sans grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
               {dashboardTemplates.map((template) => (
                 <div
                   key={template.id}
-                  className="border border-slate-200 dark:border-zinc-800 rounded-xl p-4 bg-slate-50 hover:bg-white dark:bg-zinc-900/60 dark:hover:bg-zinc-900 hover:-translate-y-1 hover:shadow-lg transition-all flex flex-col gap-2 cursor-pointer group"
+                  className="border border-slate-200 dark:border-zinc-800 rounded-xl p-4 bg-slate-50 hover:bg-white dark:bg-zinc-900/60 dark:hover:bg-zinc-900 hover:-translate-y-1 hover:shadow-lg transition-all flex flex-col gap-2 cursor-pointer group min-w-0"
                   onClick={() => applyTemplate(template.id)}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between min-w-0">
                     <div className="p-2 bg-white dark:bg-zinc-950 shadow-sm rounded-lg border border-slate-100 dark:border-zinc-800">
                       {template.icon}
                     </div>
@@ -3281,7 +3782,7 @@ Ask me any questions about the metrics, trends, or records displayed above!`,
                 </div>
               ))}
               
-              <div className="border border-slate-200 border-dashed dark:border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-2 text-slate-400 dark:text-zinc-500">
+              <div className="border border-slate-200 border-dashed dark:border-zinc-800 rounded-xl p-4 flex flex-col items-center justify-center text-center gap-2 text-slate-400 dark:text-zinc-500 min-w-0">
                 <Plus className="h-6 w-6 mb-1 opacity-50" />
                 <h4 className="font-bold text-[12px]">More Templates Coming Soon</h4>
                 <p className="text-[10px] max-w-[200px]">We're constantly adding new use-case templates to the registry.</p>

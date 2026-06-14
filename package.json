@@ -33,6 +33,7 @@
     "pdfjs-dist": "^6.0.227",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-resizable-panels": "^4.11.2",
     "react-simple-maps": "^3.0.0",
     "recharts": "^3.8.1",
     "simple-statistics": "^7.9.0",
