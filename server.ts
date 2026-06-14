@@ -18,7 +18,7 @@ const getActiveProvider = () => {
   if (geminiKey && geminiKey !== "MY_GEMINI_API_KEY" && geminiKey.trim() !== "") {
     return {
       provider: "gemini" as const,
-      providerName: "Google Gemini (gemini-1.5-flash)",
+      providerName: "Google Gemini (gemini-3.5-flash)",
       isConfigured: true
     };
   } else if (openRouterKey && openRouterKey !== "MY_OPENROUTER_API_KEY" && openRouterKey.trim() !== "") {
@@ -74,7 +74,7 @@ async function callGeminiStreamWithFallback(
   contents: any[],
   systemInstruction: string,
   temperature: number,
-  initialModelPriorities: string[] = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+  initialModelPriorities: string[] = ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
 ) {
   let lastError: any = null;
 
@@ -134,7 +134,7 @@ async function callGeminiContentWithFallback(
   prompt: string,
   systemInstruction: string,
   temperature: number,
-  initialModelPriorities: string[] = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+  initialModelPriorities: string[] = ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
 ) {
   let lastError: any = null;
 
@@ -280,7 +280,7 @@ Core Operations Directives:
           contents,
           systemInstruction,
           0.1,
-          ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+          ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
         );
 
         // Successfully acquired stream, now set headers
@@ -380,7 +380,7 @@ Core Operations Directives:
         prompt,
         "You are a helpful assistant that suggests dashboard questions.",
         0.5,
-        ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+        ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
       );
 
       const text = response.text || "";
@@ -685,7 +685,7 @@ Keep responses in beautiful, professional markdown. Speak as a Senior BI Archite
           contents,
           systemInstruction,
           0.3,
-          ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+          ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
         );
 
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -767,7 +767,7 @@ Keep responses in beautiful, professional markdown. Speak as a Senior BI Archite
           prompt,
           systemInstruction,
           0.2,
-          ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
+          ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
         );
 
         res.json({ insights: response.text || "" });

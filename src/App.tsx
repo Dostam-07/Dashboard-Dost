@@ -301,16 +301,30 @@ export default function App() {
   
   // UI Layout States
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<string[]>([]);
-  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(() => localStorage.getItem('isLeftSidebarCollapsed') === 'true');
-  const [isQAPanelCollapsed, setIsQAPanelCollapsed] = useState(() => localStorage.getItem('isQAPanelCollapsed') === 'true');
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('isLeftSidebarCollapsed');
+      return stored !== null ? JSON.parse(stored) === true : false;
+    } catch (e) {
+      return false;
+    }
+  });
+  const [isQAPanelCollapsed, setIsQAPanelCollapsed] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('isQAPanelCollapsed');
+      return stored !== null ? JSON.parse(stored) === true : false;
+    } catch (e) {
+      return false;
+    }
+  });
   const [isCanvasLoading, setIsCanvasLoading] = useState(false); 
 
   useEffect(() => {
-    localStorage.setItem('isLeftSidebarCollapsed', String(isLeftSidebarCollapsed));
+    localStorage.setItem('isLeftSidebarCollapsed', JSON.stringify(!!isLeftSidebarCollapsed));
   }, [isLeftSidebarCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem('isQAPanelCollapsed', String(isQAPanelCollapsed));
+    localStorage.setItem('isQAPanelCollapsed', JSON.stringify(!!isQAPanelCollapsed));
   }, [isQAPanelCollapsed]);
   
   const resetWorkspaceLayout = () => {
